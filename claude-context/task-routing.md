@@ -19,7 +19,8 @@ Read:
 - `src/features/collections/collectionsApi.ts`
 - `src/features/collections/slugUtils.ts`
 - `src/components/dashboard/CollectionsSidebar.tsx`
-- `src/components/dashboard/CollectionEditor.tsx`
+- `src/components/dashboard/CollectionSheet.tsx` — right-side drawer; controls open/close/mode
+- `src/components/dashboard/CollectionEditor.tsx` — form inside the sheet
 - `src/routes/DashboardPage.tsx`
 
 ## If the task is bookmark save/edit/delete
@@ -78,12 +79,30 @@ Read:
 - `supabase/seed.sql`
 - `scripts/seed-demo.ts`
 
+## If the task is export (JSON / Markdown download)
+
+Read:
+
+- `src/lib/export.ts`
+- `src/features/bookmarks/bookmarksApi.ts` (see `getAllBookmarks` endpoint)
+- `src/routes/DashboardPage.tsx` (see `ExportMenu` component and wiring)
+
+## If the task is static/marketing pages (About, Privacy)
+
+Read:
+
+- `src/routes/AboutPage.tsx`
+- `src/routes/PrivacyPage.tsx`
+- `src/app/router.tsx`
+
 ## If the task is layout or navigation
 
 Read:
 
 - `src/components/layout/RootLayout.tsx`
-- `src/components/layout/AppShell.tsx`
+- `src/components/layout/AppShell.tsx` — passes `onEditCollection` down to CollectionsSidebar
+- `src/components/dashboard/CollectionsSidebar.tsx` — sidebar nav; pencil icon per row triggers edit sheet
+- `src/components/dashboard/CollectionSheet.tsx` — on-demand right-side drawer for create/edit
 - `src/app/router.tsx`
 - `src/routes/HomePage.tsx`
 - `src/routes/DashboardPage.tsx`

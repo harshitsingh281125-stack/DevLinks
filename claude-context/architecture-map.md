@@ -13,6 +13,8 @@
 - `src/routes/HomePage.tsx`: landing page and GitHub sign-in CTA
 - `src/routes/DashboardPage.tsx`: authenticated workspace
 - `src/routes/PublicCollectionPage.tsx`: public shared collection page
+- `src/routes/AboutPage.tsx`: "why I built this" static page
+- `src/routes/PrivacyPage.tsx`: privacy policy static page
 - `src/features/auth/ProtectedRoute.tsx`: redirect unauthenticated users to `/?redirectTo=...`
 
 ## Main feature slices
@@ -37,10 +39,10 @@
 - `src/components/layout/RootLayout.tsx`: outer layout
 - `src/components/layout/AppShell.tsx`: dashboard shell, sidebar, mobile drawer
 - `src/components/dashboard/`
-  - collection editor/sidebar
-  - URL entry
-  - save/edit/delete bookmark modals
-  - bookmark list/cards
+  - `CollectionSheet.tsx`: right-side drawer that wraps CollectionEditor; opened on demand (sidebar `+`, per-row pencil, header button) — never mounted permanently
+  - `CollectionEditor.tsx`: form inside the sheet — create/edit mode, duplicate-name warning, optimistic public/private toggle
+  - `CollectionsSidebar.tsx`: collections list; each row has a persistent edit (pencil) button
+  - URL entry, save/edit/delete bookmark modals, bookmark list/cards
 - `src/components/public/`
   - public bookmark card rendering
 
@@ -53,6 +55,7 @@
 - `src/lib/seo.ts`: public-page SEO/meta builders
 - `src/lib/useDocumentHead.ts`: head-tag updates
 - `src/lib/useFocusTrap.ts`: mobile drawer/modal accessibility helper
+- `src/lib/export.ts`: bookmark export — pure serialisers (`serializeCollectionJson`, `serializeAllJson`, `serializeCollectionMarkdown`, `serializeAllMarkdown`) + browser download triggers (`exportCollectionJson`, `exportAllJson`, `exportCollectionMarkdown`, `exportAllMarkdown`). Tested in `src/lib/export.test.ts`.
 
 ## Backend/server shape
 

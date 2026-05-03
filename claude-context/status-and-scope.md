@@ -24,11 +24,13 @@
 - `/` landing page
 - `/app` authenticated dashboard
 - `/public/collections/:slug` public read-only page
+- `/about` — "why I built this" page with author card (GitHub link placeholder until repo is public)
+- `/privacy` — privacy policy page (contact: harshit.singh281125@gmail.com)
 
 ## What is already finished
 
 - Auth bootstrap, protected route flow, GitHub OAuth, sign-out
-- Profile upsert/sync after first login
+- Profile upsert/sync after first login — profile state is preserved on tab-switch token refresh (only reset on actual user change)
 - Collection CRUD, including delete restriction for non-empty collections
 - Metadata preview endpoint with URL validation, timeout, redirect handling, and SSRF-style private-network blocking
 - Bookmark create/edit/delete
@@ -38,6 +40,9 @@
 - SEO metadata for public pages
 - Analytics events for signup, first bookmark, search, public toggle, public page view
 - Demo seed data for 3 launch-ready public collections
+- Export feature: per-collection and all-bookmarks export to JSON and Markdown, accessible via the dashboard collection header
+- `/about` and `/privacy` public pages
+- Landing page cleanup: removed dead "See a live demo" CTAs, wired footer links to real routes (About → `/about`, Privacy → `/privacy`, Contact → `mailto:`, Product links → anchor sections), removed Terms/Status/Docs/API/GitHub/Changelog footer entries
 
 ## Not finished yet
 
