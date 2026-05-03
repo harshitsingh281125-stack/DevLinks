@@ -13,6 +13,9 @@ It is built for the common developer workflow of collecting docs, repos, article
 - Prevent duplicate saves with normalized URL matching per user
 - Search bookmarks by text, tag, collection, and resource type
 - Publish selected collections as public read-only share pages
+- Edit your public profile (display name, bio, location, website, GitHub, Twitter/X, LinkedIn, avatar)
+- Author profile shown on public collection pages
+- Export bookmarks to JSON or Markdown
 
 ## Core product flows
 
@@ -49,32 +52,47 @@ Any collection can be published to a public route:
 
 - `/public/collections/:slug`
 
-Only collections marked `is_public = true` and their linked bookmarks are visible on public pages.
+Only collections marked `is_public = true` and their linked bookmarks are visible on public pages. Public pages display the author's profile card (avatar, name, bio, location, and social links) sourced from the owner's profile.
+
+### 5. Profile
+
+Users can set up a public profile at `/profile`:
+
+- Display name, bio, location
+- Website, GitHub, Twitter/X, LinkedIn
+- Avatar (uploaded to Supabase Storage)
+
+Profile setup is optional and skippable. A banner on the dashboard prompts first-time users.
+
+### 6. Export
+
+Bookmarks can be exported from the dashboard collection header as JSON or Markdown — per collection or all bookmarks at once.
 
 ## Current status
 
-This project has completed backlog tasks `1-34` from [tasks.md](./tasks.md).
-
 Implemented:
 
-- frontend app shell and landing page
+- Frontend app shell and landing page
 - Supabase auth/session bootstrap
-- profile sync after first sign-in
-- collection CRUD
-- bookmark CRUD
-- metadata preview endpoint
-- deterministic tagging/resource classification
-- duplicate detection
-- full-text search and filters
-- public collection pages
+- Profile sync after first sign-in
+- Editable user profile with avatar upload (`/profile`)
+- Collection CRUD
+- Bookmark CRUD
+- Metadata preview endpoint
+- Deterministic tagging/resource classification
+- Duplicate detection
+- Full-text search and filters
+- Public collection pages with author profile card
 - SEO helpers for public pages
-- analytics events
-- demo seed data for 3 launch-ready public collections
+- Analytics events
+- Demo seed data for 3 launch-ready public collections
+- Bookmark export (JSON + Markdown, per-collection and all)
+- About and Privacy pages
 
 Not completed yet:
 
-- production deployment verification
-- final MVP QA/security pass
+- Production deployment verification
+- Final MVP QA/security pass
 
 ## Demo public collections
 
@@ -103,12 +121,12 @@ claude-context/       Token-efficient project context docs
 scripts/              Utility scripts, including live seed script
 src/app/              App bootstrap, router, store, providers
 src/components/       Layout, dashboard, and public UI components
-src/features/         Feature slices: auth, bookmarks, collections, public
+src/features/         Feature slices: auth, bookmarks, collections, profile, public
 src/lib/              Shared types, env, analytics, SEO, utilities
 src/routes/           Route-level pages
 src/server/           Metadata fetch/parsing and tagging rules
 src/seed/             Seed data source of truth
-supabase/migrations/  Schema, helpers, indexes, and RLS
+supabase/migrations/  Schema, helpers, indexes, RLS, and storage bucket policies
 supabase/seed.sql     Local/demo seed
 tests/                Playwright tests
 ```
@@ -152,13 +170,16 @@ Database migrations live in:
 - `supabase/migrations/20260413_000001_initial_schema.sql`
 - `supabase/migrations/20260413_000002_helpers_and_indexes.sql`
 - `supabase/migrations/20260413_000003_rls_policies.sql`
+- `supabase/migrations/20260503_000001_profile_fields_and_storage.sql` — adds bio/location/website/twitter/linkedin columns, `avatars` storage bucket, and public profile read policy
 
 Important data rules:
 
-- bookmarks are unique per user on `(user_id, normalized_url)`
-- bookmark `normalized_url` and `search_text` are derived by DB trigger
+- Bookmarks are unique per user on `(user_id, normalized_url)`
+- Bookmark `normalized_url` and `search_text` are derived by DB trigger
 - RLS protects private user data
-- public reads are allowed only for public collections and their bookmarks
+- Public reads are allowed only for public collections and their bookmarks
+- Profile rows are publicly readable only when the user has at least one public collection (for author display on public pages)
+- Avatar images are stored in the `avatars` bucket (public bucket, path-scoped to user ID)
 
 ## Metadata endpoint
 

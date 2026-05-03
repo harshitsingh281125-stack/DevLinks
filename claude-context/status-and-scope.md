@@ -23,6 +23,7 @@
 
 - `/` landing page
 - `/app` authenticated dashboard
+- `/profile` authenticated profile editor (optional, skippable)
 - `/public/collections/:slug` public read-only page
 - `/about` — "why I built this" page with author card (GitHub link placeholder until repo is public)
 - `/privacy` — privacy policy page (contact: harshit.singh281125@gmail.com)
