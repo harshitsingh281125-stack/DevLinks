@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Copy, Download, Globe, Lock, Settings } from "lucide-react";
+import { Copy, Download, Globe, Lock } from "lucide-react";
 import { BookmarkList } from "@/components/dashboard/BookmarkList";
+import { CollectionSheet } from "@/components/dashboard/CollectionSheet";
 import { DeleteBookmarkDialog } from "@/components/dashboard/DeleteBookmarkDialog";
-import { CollectionEditor } from "@/components/dashboard/CollectionEditor";
 import { EditBookmarkModal, type EditBookmarkFormData } from "@/components/dashboard/EditBookmarkModal";
 import { SaveBookmarkModal, type BookmarkFormData, type SaveBookmarkResult } from "@/components/dashboard/SaveBookmarkModal";
 import { UrlSaveEntry } from "@/components/dashboard/UrlSaveEntry";
@@ -35,9 +35,8 @@ import {
   markFirstBookmarkFired,
   track,
 } from "@/lib/analytics";
-import type { Bookmark, MetadataPreview } from "@/lib/types";
+import type { Bookmark, Collection, MetadataPreview } from "@/lib/types";
 
-// Resource-type filter pills
 const FILTER_PILLS: { label: string; value: string | null }[] = [
   { label: "All", value: null },
   { label: "Docs", value: "documentation" },
@@ -51,7 +50,6 @@ const FILTER_PILLS: { label: string; value: string | null }[] = [
   { label: "Other", value: "other" },
 ];
 
-type EditorMode = "create" | "edit";
 type MutationErrorShape = { message?: string };
 
 function getErrorMessage(error: unknown, fallback: string) {
@@ -64,7 +62,6 @@ function getErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
-// Export dropdown
 function ExportMenu({
   onExportJson,
   onExportMarkdown,
@@ -143,7 +140,6 @@ function ExportMenu({
   );
 }
 
-// Toast component
 function Toast({ msg, onDone }: { msg: string; onDone: () => void }) {
   useEffect(() => {
     const t = setTimeout(onDone, 2400);
@@ -163,7 +159,6 @@ export function DashboardPage() {
 
   const selectedCollectionId = filters.collectionId;
 
-  const [editorMode, setEditorMode] = useState<EditorMode>("create");
   const [collectionError, setCollectionError] = useState<string | null>(null);
   const [metadataPreview, setMetadataPreview] = useState<MetadataPreview | null>(null);
   const [saveModalOpen, setSaveModalOpen] = useState(false);
@@ -172,7 +167,11 @@ export function DashboardPage() {
   const [freshId, setFreshId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
-  // draftQuery drives topbar search immediately; committed to URL after 300ms
+  // Collection sheet
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetMode, setSheetMode] = useState<"create" | "edit">("create");
+  const [sheetCollection, setSheetCollection] = useState<Collection | null>(null);
+
   const [draftQuery, setDraftQuery] = useState(filters.query);
 
   useEffect(() => {
@@ -219,11 +218,9 @@ export function DashboardPage() {
     { skip: !user?.id },
   );
 
-  // Auto-select first collection when URL has no cid or selected one was deleted
   useEffect(() => {
     if (collections.length === 0) {
       clearFilter("collectionId");
-      setEditorMode("create");
       return;
     }
     const selectedStillExists = collections.some((c) => c.id === selectedCollectionId);
@@ -238,13 +235,28 @@ export function DashboardPage() {
     [collections, selectedCollectionId],
   );
 
-  // Clear pending preview + modal when collection changes
   useEffect(() => {
     setMetadataPreview(null);
     setSaveModalOpen(false);
   }, [selectedCollectionId]);
 
   const activeFilterCount = [filters.query, filters.tag, filters.resourceType].filter(Boolean).length;
+
+  // ─── Sheet helpers ──────────────────────────────────────────────────────────
+
+  function openCreateSheet() {
+    setSheetMode("create");
+    setSheetCollection(null);
+    setCollectionError(null);
+    setSheetOpen(true);
+  }
+
+  function openEditSheet(collection: Collection) {
+    setSheetMode("edit");
+    setSheetCollection(collection);
+    setCollectionError(null);
+    setSheetOpen(true);
+  }
 
   // ─── Handlers ──────────────────────────────────────────────────────────────
 
@@ -327,18 +339,13 @@ export function DashboardPage() {
       setCollectionError("You must be signed in to create a collection.");
       return;
     }
-    try {
-      const created = await createCollection({
-        userId: user.id,
-        name: input.name,
-        description: input.description || null,
-      }).unwrap();
-      setFilter("collectionId", created.id);
-      setEditorMode("edit");
-      setCollectionError(null);
-    } catch (error) {
-      setCollectionError(getErrorMessage(error, "Collection creation failed."));
-    }
+    const created = await createCollection({
+      userId: user.id,
+      name: input.name,
+      description: input.description || null,
+    }).unwrap();
+    setFilter("collectionId", created.id);
+    setCollectionError(null);
   }
 
   async function handleUpdateCollection(input: { description: string; id: string; name: string }) {
@@ -346,18 +353,14 @@ export function DashboardPage() {
       setCollectionError("You must be signed in to update a collection.");
       return;
     }
-    try {
-      const updated = await updateCollection({
-        id: input.id,
-        userId: user.id,
-        name: input.name,
-        description: input.description || null,
-      }).unwrap();
-      setFilter("collectionId", updated.id);
-      setCollectionError(null);
-    } catch (error) {
-      setCollectionError(getErrorMessage(error, "Collection update failed."));
-    }
+    const updated = await updateCollection({
+      id: input.id,
+      userId: user.id,
+      name: input.name,
+      description: input.description || null,
+    }).unwrap();
+    setFilter("collectionId", updated.id);
+    setCollectionError(null);
   }
 
   async function handleTogglePublic(input: { id: string; isPublic: boolean; slug: string | null }) {
@@ -384,7 +387,6 @@ export function DashboardPage() {
     try {
       await deleteCollection({ id: collectionId, userId: user.id }).unwrap();
       setCollectionError(null);
-      setEditorMode("create");
       if (selectedCollectionId === collectionId) {
         clearFilter("collectionId");
       }
@@ -411,9 +413,6 @@ export function DashboardPage() {
     ? getErrorMessage(collectionsError, "Collections could not be loaded.")
     : null;
 
-  const rightRailMessage = collectionError ?? collectionsLoadMessage;
-
-  // Tag set for the current scope
   const scopeTags = useMemo(() => {
     if (bookmarks.length === 0) return [];
     const set = new Map<string, number>();
@@ -424,7 +423,6 @@ export function DashboardPage() {
       .map(([t]) => t);
   }, [bookmarks]);
 
-  // Type counts
   const typeCounts = useMemo(() => {
     const counts: Record<string, number> = { all: bookmarks.length };
     FILTER_PILLS.forEach(({ value }) => {
@@ -438,7 +436,6 @@ export function DashboardPage() {
     else setFilter("tag", tag);
   }
 
-  // Derive dot colour for selected collection (matches CollectionsSidebar palette)
   const DOT_PALETTE = [
     "oklch(0.68 0.17 40)", "oklch(0.72 0.16 280)", "oklch(0.78 0.15 200)",
     "oklch(0.75 0.14 90)", "oklch(0.70 0.12 320)", "oklch(0.73 0.14 160)", "oklch(0.65 0.15 60)",
@@ -452,13 +449,10 @@ export function DashboardPage() {
     <AppShell
       collections={collections}
       isCollectionsLoading={isCollectionsLoading || isCollectionsFetching}
-      onCreateCollection={() => {
-        setEditorMode("create");
-        setCollectionError(null);
-      }}
+      onCreateCollection={openCreateSheet}
+      onEditCollection={openEditSheet}
       onSelectCollection={(collectionId) => {
         setFilter("collectionId", collectionId);
-        setEditorMode(collectionId ? "edit" : "create");
         setCollectionError(null);
       }}
       selectedCollectionId={selectedCollectionId}
@@ -509,7 +503,7 @@ export function DashboardPage() {
               className="dl-btn"
               onClick={() => void navigator.clipboard.writeText(`${window.location.origin}/public/collections/${selectedCollection.slug}`)}
             >
-              <Copy size={12} /> Copy public link
+              <Copy size={12} /> Copy link
             </button>
           ) : null}
           <ExportMenu
@@ -528,16 +522,23 @@ export function DashboardPage() {
               }
             }}
           />
-          <button
-            type="button"
-            className="dl-btn"
-            onClick={() => {
-              setEditorMode(selectedCollection ? "edit" : "create");
-              setCollectionError(null);
-            }}
-          >
-            <Settings size={12} /> Edit
-          </button>
+          {selectedCollection ? (
+            <button
+              type="button"
+              className="dl-btn"
+              onClick={() => openEditSheet(selectedCollection)}
+            >
+              Edit collection
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="dl-btn primary"
+              onClick={openCreateSheet}
+            >
+              New collection
+            </button>
+          )}
         </div>
       </div>
 
@@ -555,18 +556,19 @@ export function DashboardPage() {
         <div className="dl-filter-group">
           {FILTER_PILLS.map(({ label, value }) => {
             const isActive = filters.resourceType === value;
+            const count = typeCounts[value ?? "all"] ?? 0;
             return (
               <button
                 key={label}
                 type="button"
-                className={`dl-filter-chip${isActive ? " active" : ""}`}
+                className={`dl-filter-chip${isActive ? " active" : ""}${count === 0 && value !== null ? " muted" : ""}`}
                 onClick={() =>
                   isActive ? clearFilter("resourceType") : setFilter("resourceType", value)
                 }
                 aria-pressed={isActive}
               >
                 {label}
-                <span className="dl-chip-count">{typeCounts[value ?? "all"] ?? 0}</span>
+                <span className="dl-chip-count">{count}</span>
               </button>
             );
           })}
@@ -621,39 +623,37 @@ export function DashboardPage() {
         </div>
       </div>
 
-      {/* ── Two-column area: bookmarks + collection editor ─────── */}
-      <div style={{ display: "grid", gap: 24, gridTemplateColumns: "minmax(0,1.4fr) minmax(280px,0.6fr)", alignItems: "start" }}>
-        <BookmarkList
-          activeTag={filters.tag}
-          bookmarks={bookmarks}
-          hasActiveFilters={activeFilterCount > 0}
-          isError={isBookmarksError}
-          isLoading={isBookmarksLoading}
-          onDeleteRequest={setPendingDeleteBookmark}
-          onEdit={setEditingBookmark}
-          onResetFilters={() => {
-            setDraftQuery("");
-            resetFilters();
-          }}
-          onTagClick={(tag) => toggleTagFilter(tag)}
-          freshId={freshId}
-        />
+      {/* ── Bookmark list — full width ─────────────────────────────── */}
+      <BookmarkList
+        activeTag={filters.tag}
+        bookmarks={bookmarks}
+        hasActiveFilters={activeFilterCount > 0}
+        isError={isBookmarksError}
+        isLoading={isBookmarksLoading}
+        onDeleteRequest={setPendingDeleteBookmark}
+        onEdit={setEditingBookmark}
+        onResetFilters={() => {
+          setDraftQuery("");
+          resetFilters();
+        }}
+        onTagClick={(tag) => toggleTagFilter(tag)}
+        freshId={freshId}
+      />
 
-        <CollectionEditor
-          activeCollection={selectedCollection}
-          busyState={busyState}
-          errorMessage={rightRailMessage}
-          mode={editorMode}
-          onCreate={handleCreateCollection}
-          onDelete={handleDeleteCollection}
-          onModeChange={(mode) => {
-            setEditorMode(mode);
-            setCollectionError(null);
-          }}
-          onTogglePublic={handleTogglePublic}
-          onUpdate={handleUpdateCollection}
-        />
-      </div>
+      {/* ── Collection sheet ──────────────────────────────────────── */}
+      <CollectionSheet
+        activeCollection={sheetCollection ?? selectedCollection}
+        busyState={busyState}
+        collections={collections}
+        errorMessage={collectionError ?? collectionsLoadMessage}
+        isOpen={sheetOpen}
+        mode={sheetMode}
+        onClose={() => setSheetOpen(false)}
+        onCreate={handleCreateCollection}
+        onDelete={handleDeleteCollection}
+        onTogglePublic={handleTogglePublic}
+        onUpdate={handleUpdateCollection}
+      />
 
       {/* ── Modals ────────────────────────────────────────────────── */}
       {metadataPreview ? (
@@ -688,7 +688,6 @@ export function DashboardPage() {
         />
       ) : null}
 
-      {/* ── Toast ─────────────────────────────────────────────────── */}
       {toast ? (
         <Toast msg={toast} onDone={() => setToast(null)} />
       ) : null}

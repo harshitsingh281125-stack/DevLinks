@@ -62,10 +62,10 @@ export function UrlSaveEntry({
       ) : null}
 
       <div className="dl-addbar">
-        <span className="dl-addbar-prompt">$&nbsp;save</span>
+        <span className="dl-addbar-prompt" style={!activeCollection ? { color: "var(--fg-4)" } : undefined}>$&nbsp;save</span>
         <input
           type="text"
-          placeholder="paste a URL to save — https://…"
+          placeholder={activeCollection ? "paste a URL to save — https://…" : "select a collection first"}
           value={urlInput}
           onChange={(e) => setUrlInput(e.target.value)}
           onKeyDown={(e) => {

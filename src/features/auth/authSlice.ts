@@ -39,9 +39,14 @@ const authSlice = createSlice({
       state.session = action.payload;
       state.user = action.payload?.user ?? null;
       state.status = action.payload ? "authenticated" : "unauthenticated";
-      state.profile = null;
-      state.profileSyncStatus = "idle";
-      state.profileSyncError = null;
+
+      const incomingId = action.payload?.user?.id ?? null;
+      const currentId = state.profile?.id ?? null;
+      if (incomingId !== currentId) {
+        state.profile = null;
+        state.profileSyncStatus = "idle";
+        state.profileSyncError = null;
+      }
     },
     profileSyncStarted(state) {
       state.profileSyncStatus = "syncing";

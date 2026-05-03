@@ -57,6 +57,7 @@ type AppShellProps = PropsWithChildren<{
   collections: Collection[];
   isCollectionsLoading: boolean;
   onCreateCollection: () => void;
+  onEditCollection: (collection: Collection) => void;
   onSelectCollection: (collectionId: string | null) => void;
   selectedCollectionId: string | null;
   query: string;
@@ -68,6 +69,7 @@ export function AppShell({
   collections,
   isCollectionsLoading,
   onCreateCollection,
+  onEditCollection,
   onSelectCollection,
   selectedCollectionId,
   query,
@@ -206,6 +208,10 @@ export function AppShell({
           isLoading={isCollectionsLoading}
           onCreateCollection={() => {
             onCreateCollection();
+            if (sidebarOpen) closeSidebar();
+          }}
+          onEditCollection={(collection) => {
+            onEditCollection(collection);
             if (sidebarOpen) closeSidebar();
           }}
           onSelectCollection={(id) => {
