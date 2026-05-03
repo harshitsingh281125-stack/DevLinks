@@ -43,6 +43,8 @@
 - Export feature: per-collection and all-bookmarks export to JSON and Markdown, accessible via the dashboard collection header
 - `/about` and `/privacy` public pages
 - Landing page cleanup: removed dead "See a live demo" CTAs, wired footer links to real routes (About → `/about`, Privacy → `/privacy`, Contact → `mailto:`, Product links → anchor sections), removed Terms/Status/Docs/API/GitHub/Changelog footer entries
+- User profile: editable `/profile` page (display name, bio, location, website, GitHub, Twitter/X, LinkedIn, avatar upload to Supabase Storage `avatars` bucket); profile is optional and skippable; first-time banner on dashboard; profile link in sidebar user menu
+- Public collection pages show full author card (avatar, name, bio, location, all social links) — sourced from the joined `profiles` row via RLS policy `profiles_select_public_author` (visible only when user has ≥1 public collection)
 
 ## Not finished yet
 

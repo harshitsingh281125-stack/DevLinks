@@ -4,5 +4,5 @@ export const baseApi = createApi({
   reducerPath: "baseApi",
   baseQuery: fakeBaseQuery(),
   endpoints: () => ({}),
-  tagTypes: ["Session", "Collections", "Bookmarks"],
+  tagTypes: ["Session", "Collections", "Bookmarks", "Profile"],
 });

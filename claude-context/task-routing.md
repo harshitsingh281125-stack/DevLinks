@@ -87,6 +87,17 @@ Read:
 - `src/features/bookmarks/bookmarksApi.ts` (see `getAllBookmarks` endpoint)
 - `src/routes/DashboardPage.tsx` (see `ExportMenu` component and wiring)
 
+## If the task is user profile (edit, avatar, public author display)
+
+Read:
+
+- `src/features/profile/profileApi.ts` — `useGetMyProfileQuery`, `useUpdateMyProfileMutation`, `useUploadAvatarMutation`; avatars go to Supabase Storage bucket `avatars`
+- `src/routes/ProfilePage.tsx` — `/profile` route, form + avatar upload, dispatches `profileSyncSucceeded` on save
+- `src/features/auth/profileBootstrap.ts` — `syncProfile` (login upsert, only touches 5 OAuth fields), `mapProfileRow`
+- `src/features/auth/authSlice.ts` — `selectCurrentProfile`, `profileSyncSucceeded`
+- `supabase/migrations/20260503_000001_profile_fields_and_storage.sql` — adds bio/location/website_url/twitter_handle/linkedin_url columns; avatars bucket + RLS; `profiles_select_public_author` RLS policy
+- `src/features/public/publicApi.ts` — `getPublicCollectionBySlug` joins profiles for author display
+
 ## If the task is static/marketing pages (About, Privacy)
 
 Read:

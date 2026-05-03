@@ -6,6 +6,7 @@ import { DashboardPage } from "@/routes/DashboardPage";
 import { HomePage } from "@/routes/HomePage";
 import { NotFoundPage } from "@/routes/NotFoundPage";
 import { PrivacyPage } from "@/routes/PrivacyPage";
+import { ProfilePage } from "@/routes/ProfilePage";
 import { PublicCollectionPage } from "@/routes/PublicCollectionPage";
 
 export const router = createBrowserRouter([
@@ -23,6 +24,14 @@ export const router = createBrowserRouter([
         element: (
           <ProtectedRoute>
             <DashboardPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "profile",
+        element: (
+          <ProtectedRoute>
+            <ProfilePage />
           </ProtectedRoute>
         ),
       },

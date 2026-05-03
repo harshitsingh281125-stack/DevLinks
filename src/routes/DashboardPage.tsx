@@ -7,8 +7,9 @@ import { EditBookmarkModal, type EditBookmarkFormData } from "@/components/dashb
 import { SaveBookmarkModal, type BookmarkFormData, type SaveBookmarkResult } from "@/components/dashboard/SaveBookmarkModal";
 import { UrlSaveEntry } from "@/components/dashboard/UrlSaveEntry";
 import { AppShell } from "@/components/layout/AppShell";
+import { Link } from "react-router-dom";
 import { useAppSelector } from "@/app/hooks";
-import { selectCurrentUser } from "@/features/auth/authSlice";
+import { selectCurrentProfile, selectCurrentUser } from "@/features/auth/authSlice";
 import {
   useCreateBookmarkMutation,
   useDeleteBookmarkMutation,
@@ -155,7 +156,22 @@ function Toast({ msg, onDone }: { msg: string; onDone: () => void }) {
 
 export function DashboardPage() {
   const user = useAppSelector(selectCurrentUser);
+  const profile = useAppSelector(selectCurrentProfile);
   const { filters, setFilter, clearFilter, resetFilters } = useSearchFilters();
+
+  // Show a "complete your profile" banner for users who haven't filled it in yet.
+  // Dismissed state is stored in localStorage so it persists across refreshes.
+  const profileBannerKey = user ? `devlinks:profile-banner-dismissed:${user.id}` : null;
+  const [bannerDismissed, setBannerDismissed] = useState(
+    () => (profileBannerKey ? localStorage.getItem(profileBannerKey) === "1" : true),
+  );
+  const profileIncomplete = !profile?.bio && !profile?.displayName && !profile?.websiteUrl;
+  const showProfileBanner = !bannerDismissed && profileIncomplete;
+
+  function dismissBanner() {
+    if (profileBannerKey) localStorage.setItem(profileBannerKey, "1");
+    setBannerDismissed(true);
+  }
 
   const selectedCollectionId = filters.collectionId;
 
@@ -459,6 +475,37 @@ export function DashboardPage() {
       query={draftQuery}
       setQuery={setDraftQuery}
     >
+      {/* ── Complete-your-profile banner ───────────────────────────── */}
+      {showProfileBanner && (
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+          padding: "10px 16px", margin: "0 0 2px",
+          background: "oklch(0.30 0.06 230 / 0.55)",
+          borderBottom: "1px solid var(--line-soft)",
+          fontFamily: "var(--sans)", fontSize: 13, color: "var(--fg-1)",
+        }}>
+          <span>Complete your profile — visitors of your public collections will see your name and bio.</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+            <Link
+              to="/profile"
+              style={{
+                padding: "4px 12px", borderRadius: 20, fontSize: 12, fontWeight: 600,
+                background: "var(--accent)", color: "var(--accent-ink)", textDecoration: "none",
+              }}
+            >
+              Set up profile
+            </Link>
+            <button
+              onClick={dismissBanner}
+              style={{ background: "none", border: 0, color: "var(--fg-3)", cursor: "pointer", fontSize: 18, lineHeight: 1, padding: "0 2px" }}
+              aria-label="Dismiss"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── Collection header ─────────────────────────────────────── */}
       <div className="dl-collection-head">
         <div style={{ minWidth: 0, flex: 1 }}>

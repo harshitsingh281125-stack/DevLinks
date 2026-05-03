@@ -139,6 +139,7 @@
   letter-spacing: -0.01em;
   text-decoration: none;
   color: var(--fg);
+  flex-shrink: 0;
 }
 .dl-logo-mark {
   width: 26px; height: 26px;
@@ -167,6 +168,14 @@
   background: none;
   position: relative;
   transition: background 120ms;
+  max-width: 140px;
+  min-width: 0;
+}
+.dl-user-chip > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 .dl-user-chip:hover { background: var(--bg-2); }
 .dl-user-avatar {

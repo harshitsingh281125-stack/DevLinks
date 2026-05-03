@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, type PropsWithChildren } from "react";
-import { BookOpen, ExternalLink, LogOut, Menu, Search, X } from "lucide-react";
+import { BookOpen, ExternalLink, LogOut, Menu, Search, UserPen, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAppSelector } from "@/app/hooks";
 import { CollectionsSidebar } from "@/components/dashboard/CollectionsSidebar";
 import { useGetAllPublicCollectionsQuery } from "@/features/public/publicApi";
 import { useFocusTrap } from "@/lib/useFocusTrap";
-import { selectCurrentUser } from "@/features/auth/authSlice";
+import { selectCurrentProfile, selectCurrentUser } from "@/features/auth/authSlice";
 import { useAuthActions } from "@/features/auth/useAuthActions";
 import type { Collection } from "@/lib/types";
 
@@ -76,6 +76,7 @@ export function AppShell({
   setQuery,
 }: AppShellProps) {
   const user = useAppSelector(selectCurrentUser);
+  const profile = useAppSelector(selectCurrentProfile);
   const { errorMessage, isWorking, signOut } = useAuthActions();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -130,13 +131,19 @@ export function AppShell({
     menuButtonRef.current?.focus();
   }
 
-  // Derive user initials from name or email
+  // Prefer stored profile fields; fall back to OAuth metadata
   const displayName =
+    profile?.displayName ??
     user?.user_metadata?.full_name ??
     user?.user_metadata?.name ??
     user?.email ??
     "User";
-  const handle = user?.user_metadata?.preferred_username ?? user?.email?.split("@")[0] ?? "user";
+  const handle =
+    profile?.githubUsername ??
+    user?.user_metadata?.preferred_username ??
+    user?.email?.split("@")[0] ??
+    "user";
+  const avatarUrl = profile?.avatarUrl ?? null;
   const initials = displayName
     .split(/\s+/)
     .slice(0, 2)
@@ -172,7 +179,13 @@ export function AppShell({
               aria-expanded={userMenuOpen}
               aria-label="User menu"
             >
-              <span className="dl-user-avatar">{initials || "U"}</span>
+              <span className="dl-user-avatar">
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt={displayName} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} />
+                ) : (
+                  initials || "U"
+                )}
+              </span>
               <span>@{handle}</span>
             </button>
 
@@ -181,6 +194,15 @@ export function AppShell({
                 <div style={{ padding: "6px 10px 8px", fontFamily: "var(--mono)", fontSize: 11, color: "var(--fg-3)", borderBottom: "1px solid var(--line-soft)", marginBottom: 4 }}>
                   {user?.email}
                 </div>
+                <Link
+                  to="/profile"
+                  onClick={() => setUserMenuOpen(false)}
+                  className="dl-nav-btn"
+                  style={{ textDecoration: "none", borderRadius: 6, margin: "2px 0" }}
+                >
+                  <UserPen size={13} style={{ color: "var(--fg-3)" }} />
+                  Edit profile
+                </Link>
                 <button
                   className="danger"
                   onClick={() => {

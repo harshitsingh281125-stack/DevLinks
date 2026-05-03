@@ -2,6 +2,23 @@ import { baseApi } from "@/api/baseApi";
 import { supabase } from "@/lib/supabase";
 import type { Bookmark, Collection, ResourceType } from "@/lib/types";
 
+// ─── Author ───────────────────────────────────────────────────────────────────
+
+export interface CollectionAuthor {
+  displayName: string | null;
+  githubUsername: string | null;
+  avatarUrl: string | null;
+  bio: string | null;
+  location: string | null;
+  websiteUrl: string | null;
+  twitterHandle: string | null;
+  linkedinUrl: string | null;
+}
+
+export interface CollectionWithAuthor extends Collection {
+  author: CollectionAuthor | null;
+}
+
 // ─── Row shapes ───────────────────────────────────────────────────────────────
 
 type CollectionRow = {
@@ -38,7 +55,7 @@ const BOOKMARK_SELECT =
 
 // ─── Mappers ──────────────────────────────────────────────────────────────────
 
-function mapCollectionRow(row: CollectionRow): Collection {
+export function mapCollectionRow(row: CollectionRow): Collection {
   return {
     id: row.id,
     userId: row.user_id,
@@ -92,17 +109,49 @@ export const publicApi = baseApi.injectEndpoints({
       providesTags: [{ type: "Collections" as const, id: "public-list" }],
     }),
 
-    getPublicCollectionBySlug: builder.query<Collection | null, string>({
+    getPublicCollectionBySlug: builder.query<CollectionWithAuthor | null, string>({
       queryFn: async (slug) => {
         const { data, error } = await supabase
           .from("collections")
-          .select("id, user_id, name, description, slug, is_public, created_at, updated_at")
+          .select(
+            "id, user_id, name, description, slug, is_public, created_at, updated_at, profiles(display_name, github_username, avatar_url, bio, location, website_url, twitter_handle, linkedin_url)",
+          )
           .eq("slug", slug)
           .eq("is_public", true)
           .maybeSingle();
 
         if (error) return { error: { message: error.message } };
-        return { data: data ? mapCollectionRow(data as CollectionRow) : null };
+        if (!data) return { data: null };
+
+        const profileData = data.profiles as unknown as {
+          display_name: string | null;
+          github_username: string | null;
+          avatar_url: string | null;
+          bio: string | null;
+          location: string | null;
+          website_url: string | null;
+          twitter_handle: string | null;
+          linkedin_url: string | null;
+        } | null;
+
+        const collection = mapCollectionRow(data as unknown as CollectionRow);
+        return {
+          data: {
+            ...collection,
+            author: profileData
+              ? {
+                  displayName: profileData.display_name,
+                  githubUsername: profileData.github_username,
+                  avatarUrl: profileData.avatar_url,
+                  bio: profileData.bio,
+                  location: profileData.location,
+                  websiteUrl: profileData.website_url,
+                  twitterHandle: profileData.twitter_handle,
+                  linkedinUrl: profileData.linkedin_url,
+                }
+              : null,
+          },
+        };
       },
       providesTags: (_result, _error, slug) => [
         { type: "Collections" as const, id: `public-${slug}` },

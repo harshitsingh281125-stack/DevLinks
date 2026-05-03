@@ -59,12 +59,17 @@ export function buildProfileUpsertPayload(user: User): ProfileUpsertPayload {
   };
 }
 
-function mapProfileRow(row: {
+export function mapProfileRow(row: {
   id: string;
   email: string | null;
   github_username: string | null;
   display_name: string | null;
   avatar_url: string | null;
+  bio: string | null;
+  location: string | null;
+  website_url: string | null;
+  twitter_handle: string | null;
+  linkedin_url: string | null;
   created_at: string;
   updated_at: string;
 }): Profile {
@@ -74,6 +79,11 @@ function mapProfileRow(row: {
     githubUsername: row.github_username,
     displayName: row.display_name,
     avatarUrl: row.avatar_url,
+    bio: row.bio,
+    location: row.location,
+    websiteUrl: row.website_url,
+    twitterHandle: row.twitter_handle,
+    linkedinUrl: row.linkedin_url,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
