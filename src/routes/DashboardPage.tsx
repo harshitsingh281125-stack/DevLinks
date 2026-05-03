@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Copy, Globe, Lock, Settings } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Copy, Download, Globe, Lock, Settings } from "lucide-react";
 import { BookmarkList } from "@/components/dashboard/BookmarkList";
 import { DeleteBookmarkDialog } from "@/components/dashboard/DeleteBookmarkDialog";
 import { CollectionEditor } from "@/components/dashboard/CollectionEditor";
@@ -12,9 +12,16 @@ import { selectCurrentUser } from "@/features/auth/authSlice";
 import {
   useCreateBookmarkMutation,
   useDeleteBookmarkMutation,
+  useGetAllBookmarksQuery,
   useGetBookmarksQuery,
   useUpdateBookmarkMutation,
 } from "@/features/bookmarks/bookmarksApi";
+import {
+  exportAllJson,
+  exportAllMarkdown,
+  exportCollectionJson,
+  exportCollectionMarkdown,
+} from "@/lib/export";
 import { useSearchFilters } from "@/features/bookmarks/useSearchFilters";
 import {
   useCreateCollectionMutation,
@@ -55,6 +62,85 @@ function getErrorMessage(error: unknown, fallback: string) {
     }
   }
   return fallback;
+}
+
+// Export dropdown
+function ExportMenu({
+  onExportJson,
+  onExportMarkdown,
+}: {
+  onExportJson: () => void;
+  onExportMarkdown: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button
+        type="button"
+        className="dl-btn"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="true"
+        aria-expanded={open}
+      >
+        <Download size={12} /> Export
+      </button>
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            right: 0,
+            top: "calc(100% + 6px)",
+            background: "var(--bg-2)",
+            border: "1px solid var(--line)",
+            borderRadius: 7,
+            padding: 4,
+            minWidth: 150,
+            zIndex: 50,
+            boxShadow: "0 8px 24px oklch(0 0 0 / 0.4)",
+          }}
+        >
+          {[
+            { label: "Export as JSON", action: onExportJson },
+            { label: "Export as Markdown", action: onExportMarkdown },
+          ].map(({ label, action }) => (
+            <button
+              key={label}
+              type="button"
+              style={{
+                display: "block",
+                width: "100%",
+                textAlign: "left",
+                padding: "7px 12px",
+                background: "transparent",
+                border: "none",
+                borderRadius: 5,
+                fontSize: 12.5,
+                fontFamily: "var(--mono)",
+                color: "var(--fg-1)",
+                cursor: "pointer",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-3)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+              onClick={() => { action(); setOpen(false); }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // Toast component
@@ -126,6 +212,11 @@ export function DashboardPage() {
   } = useGetBookmarksQuery(
     { filters, userId: user?.id ?? "" },
     { skip: !user?.id || !selectedCollectionId },
+  );
+
+  const { currentData: allBookmarks = [] } = useGetAllBookmarksQuery(
+    user?.id ?? "",
+    { skip: !user?.id },
   );
 
   // Auto-select first collection when URL has no cid or selected one was deleted
@@ -421,6 +512,22 @@ export function DashboardPage() {
               <Copy size={12} /> Copy public link
             </button>
           ) : null}
+          <ExportMenu
+            onExportJson={() => {
+              if (selectedCollection) {
+                exportCollectionJson(bookmarks, selectedCollection);
+              } else {
+                exportAllJson(allBookmarks, collections);
+              }
+            }}
+            onExportMarkdown={() => {
+              if (selectedCollection) {
+                exportCollectionMarkdown(bookmarks, selectedCollection);
+              } else {
+                exportAllMarkdown(allBookmarks, collections);
+              }
+            }}
+          />
           <button
             type="button"
             className="dl-btn"

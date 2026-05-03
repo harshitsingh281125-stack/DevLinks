@@ -640,21 +640,6 @@ function Hero({
             </svg>
             {isWorking ? "Redirecting…" : "Continue with GitHub"}
           </button>
-          <Link
-            to="/app"
-            style={{
-              background: "transparent",
-              border: `1px solid ${t.line}`,
-              color: t.fg,
-              padding: "11px 20px",
-              borderRadius: 7,
-              fontSize: 14,
-              textDecoration: "none",
-              fontFamily: t.sans,
-            }}
-          >
-            See a live demo
-          </Link>
           <span
             style={{
               width: "100%",
@@ -876,7 +861,12 @@ function FeaturesSection() {
 
           {/* 03 Duplicate detection */}
           <FeatCard num="03" title="Never save the same thing twice." desc="URLs are normalized per user — query params, trailing slashes, tracking junk all stripped — so duplicates are caught before they happen.">
-            <pre style={{ margin: 0, fontFamily: t.mono, fontSize: 11.5, color: t.fg1, lineHeight: 1.65 }}>
+            <pre style={{
+              margin: 0, fontFamily: t.mono, fontSize: 11.5, color: t.fg1, lineHeight: 1.65,
+              whiteSpace: "pre-wrap",
+              overflowWrap: "anywhere",
+              wordBreak: "break-word"
+            }}>
               <span style={{ color: t.fg4 }}>{"// incoming\n"}</span>
               <span style={{ color: t.fg1 }}>
                 {"doc.rust-lang.org/book/ch04.html?"}
@@ -1265,7 +1255,7 @@ function FaqSection() {
     },
     {
       q: "Where is my data stored?",
-      a: "Supabase (Postgres) in the EU. Your bookmarks are private until you explicitly publish a collection. Export to JSON or Markdown any time — it's your data.",
+      a: "Supabase (Postgres) in the EU. Your bookmarks are private until you explicitly publish a collection. Export any collection — or everything — to JSON or Markdown directly from the dashboard.",
     },
     {
       q: "Can I import from Pocket / Raindrop / browser bookmarks?",
@@ -1385,21 +1375,6 @@ function FinalCta({ onSignIn, isWorking }: { onSignIn: () => void; isWorking: bo
             </svg>
             {isWorking ? "Redirecting…" : "Continue with GitHub"}
           </button>
-          <Link
-            to="/app"
-            style={{
-              background: "transparent",
-              border: `1px solid ${t.line}`,
-              color: t.fg,
-              padding: "11px 20px",
-              borderRadius: 7,
-              fontSize: 14,
-              textDecoration: "none",
-              fontFamily: t.sans,
-            }}
-          >
-            See the demo
-          </Link>
         </div>
       </div>
     </section>
@@ -1409,11 +1384,13 @@ function FinalCta({ onSignIn, isWorking }: { onSignIn: () => void; isWorking: bo
 // ─── Footer ──────────────────────────────────────────────────────────────────
 
 function Footer() {
-  const cols = [
-    { h: "Product", links: ["Features", "How it works", "Pricing", "Changelog"] },
-    { h: "Resources", links: ["Docs", "API", "Status", "GitHub"] },
-    { h: "Company", links: ["About", "Privacy", "Terms", "Contact"] },
-  ];
+  const linkStyle = {
+    display: "block" as const,
+    color: t.fg1,
+    textDecoration: "none",
+    fontSize: 13.5,
+    marginBottom: 8,
+  };
   return (
     <footer style={{ padding: "50px 20px 30px", borderTop: `1px solid ${t.lineSoft}`, background: "oklch(0.14 0.006 260)" }}>
       <div style={{ maxWidth: 1200, margin: "0 auto", display: "grid", gridTemplateColumns: "1.3fr 2fr", gap: 40 }}>
@@ -1432,24 +1409,32 @@ function Footer() {
           <div style={{ fontFamily: t.mono, fontSize: 11, color: t.fg4 }}>© 2026 · Made in a terminal</div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
-          {cols.map((c) => (
-            <div key={c.h}>
-              <h5 style={{ fontFamily: t.mono, fontSize: 10.5, color: t.fg3, textTransform: "uppercase", letterSpacing: "0.1em", margin: "0 0 14px", fontWeight: 500 }}>
-                {c.h}
-              </h5>
-              {c.links.map((l) => (
-                <a
-                  key={l}
-                  href="#"
-                  style={{ display: "block", color: t.fg1, textDecoration: "none", fontSize: 13.5, marginBottom: 8 }}
-                  onMouseEnter={(e) => (e.currentTarget.style.color = t.accent)}
-                  onMouseLeave={(e) => (e.currentTarget.style.color = t.fg1)}
-                >
-                  {l}
-                </a>
-              ))}
-            </div>
-          ))}
+          <div>
+            <h5 style={{ fontFamily: t.mono, fontSize: 10.5, color: t.fg3, textTransform: "uppercase", letterSpacing: "0.1em", margin: "0 0 14px", fontWeight: 500 }}>Product</h5>
+            {(["#features", "#flow", "#pricing"] as const).map((href, i) => (
+              <a key={href} href={href} style={linkStyle}
+                onMouseEnter={(e) => (e.currentTarget.style.color = t.accent)}
+                onMouseLeave={(e) => (e.currentTarget.style.color = t.fg1)}
+              >
+                {["Features", "How it works", "Pricing"][i]}
+              </a>
+            ))}
+          </div>
+          <div>
+            <h5 style={{ fontFamily: t.mono, fontSize: 10.5, color: t.fg3, textTransform: "uppercase", letterSpacing: "0.1em", margin: "0 0 14px", fontWeight: 500 }}>Company</h5>
+            <Link to="/about" style={linkStyle}
+              onMouseEnter={(e) => (e.currentTarget.style.color = t.accent)}
+              onMouseLeave={(e) => (e.currentTarget.style.color = t.fg1)}
+            >About</Link>
+            <Link to="/privacy" style={linkStyle}
+              onMouseEnter={(e) => (e.currentTarget.style.color = t.accent)}
+              onMouseLeave={(e) => (e.currentTarget.style.color = t.fg1)}
+            >Privacy</Link>
+            <a href="mailto:harshit.singh281125@gmail.com" style={linkStyle}
+              onMouseEnter={(e) => (e.currentTarget.style.color = t.accent)}
+              onMouseLeave={(e) => (e.currentTarget.style.color = t.fg1)}
+            >Contact</a>
+          </div>
         </div>
       </div>
     </footer>

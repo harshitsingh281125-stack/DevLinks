@@ -235,6 +235,18 @@ export const bookmarksApi = baseApi.injectEndpoints({
           ? [{ type: "Bookmarks" as const, id }, { type: "Bookmarks" as const, id: "LIST" }]
           : [],
     }),
+    getAllBookmarks: builder.query<Bookmark[], string>({
+      queryFn: async (userId) => {
+        const { data, error } = await supabase
+          .from("bookmarks")
+          .select(BOOKMARK_SELECT)
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false });
+        if (error) return { error: { message: error.message } };
+        return { data: (data ?? []).map((row) => mapBookmarkRow(row as BookmarkRow)) };
+      },
+      providesTags: [{ type: "Bookmarks" as const, id: "LIST" }],
+    }),
     deleteBookmark: builder.mutation<{ id: string }, DeleteBookmarkInput>({
       queryFn: async ({ id, userId }) => {
         const { error } = await supabase
@@ -278,5 +290,6 @@ export const {
   useCreateBookmarkMutation,
   useDeleteBookmarkMutation,
   useGetBookmarksQuery,
+  useGetAllBookmarksQuery,
   useUpdateBookmarkMutation,
 } = bookmarksApi;

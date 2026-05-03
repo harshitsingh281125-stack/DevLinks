@@ -25,7 +25,6 @@ import {
   DEMO_DISPLAY_NAME,
   DEMO_GITHUB_USERNAME,
   DEMO_USER_EMAIL,
-  DEMO_USER_ID,
 } from "../src/seed/demoData.js";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
