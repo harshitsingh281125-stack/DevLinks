@@ -69,3 +69,16 @@ Build `DevLinks` as a new standalone Vite React + TypeScript app with Supabase a
 - Supabase handles auth and primary CRUD; only metadata/tagging runs through a custom server-side endpoint.
 - Slugs are generated identifiers, not fully user-custom editable slugs, to reduce collision and moderation risk.
 - Bookmark import, browser extension, AI summaries, multi-collection membership, and collaboration stay out of MVP.
+
+## Post-MVP Additions (done)
+Built after the MVP backlog, in this order. Each shipped with unit and E2E coverage.
+37. Redesign the UI on one token-based design system (light + dark, Geist), with a shared dialog/sheet primitive and honest landing copy; fix the URL-filter race, new-collection deselect, hidden delete error, and invalid type filters found along the way.
+38. Add a public collection feed: newest-activity-first list on the landing page and a searchable, sortable `/explore` page.
+39. Add roadmap collections: author-ordered steps (drag, keyboard, or buttons) backed by `bookmarks.position` and the `reorder_bookmarks` function, with per-reader progress on the public page.
+40. Improve tag suggestions: read tags the page declares (`article:tag`, JSON-LD, dev.to "Tagged with", GitHub topics, `rel="tag"`, filtered keywords), normalize them, then add rule-based tags.
+
+## Public Interfaces / Contracts (current)
+- Frontend routes: `/`, `/app`, `/profile`, `/explore`, `/public/collections/:slug`, `/about`, `/privacy`
+- Server endpoint: `POST /api/metadata` (unchanged contract; `suggestedTags` now leads with page-declared tags)
+- Database function: `reorder_bookmarks(p_collection_id uuid, p_bookmark_ids uuid[])`, callable by `authenticated` only
+- Data model additions: `collections.is_roadmap`, `bookmarks.position`
