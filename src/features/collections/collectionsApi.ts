@@ -7,6 +7,8 @@ type SupabaseErrorShape = {
   message: string;
 };
 
+const COLLECTION_SELECT = "id, user_id, name, description, slug, is_public, is_roadmap, created_at, updated_at";
+
 type CollectionRow = {
   id: string;
   user_id: string;
@@ -14,6 +16,7 @@ type CollectionRow = {
   description: string | null;
   slug: string | null;
   is_public: boolean;
+  is_roadmap: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -22,6 +25,7 @@ type CreateCollectionInput = {
   userId: string;
   name: string;
   description: string | null;
+  isRoadmap?: boolean;
 };
 
 type UpdateCollectionInput = {
@@ -29,6 +33,7 @@ type UpdateCollectionInput = {
   userId: string;
   name: string;
   description: string | null;
+  isRoadmap?: boolean;
 };
 
 type DeleteCollectionInput = {
@@ -57,6 +62,7 @@ function mapCollectionRow(row: CollectionRow): Collection {
     description: row.description,
     slug: row.slug,
     isPublic: row.is_public,
+    isRoadmap: row.is_roadmap ?? false,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -82,7 +88,7 @@ export const collectionsApi = baseApi.injectEndpoints({
       queryFn: async (userId) => {
         const { data, error } = await supabase
           .from("collections")
-          .select("id, user_id, name, description, slug, is_public, created_at, updated_at")
+          .select(COLLECTION_SELECT)
           .eq("user_id", userId)
           .order("created_at", { ascending: true });
 
@@ -104,15 +110,16 @@ export const collectionsApi = baseApi.injectEndpoints({
           : [{ type: "Collections" as const, id: "LIST" }],
     }),
     createCollection: builder.mutation<Collection, CreateCollectionInput>({
-      queryFn: async ({ userId, name, description }) => {
+      queryFn: async ({ userId, name, description, isRoadmap }) => {
         const { data, error } = await supabase
           .from("collections")
           .insert({
             user_id: userId,
             name,
             description,
+            ...(isRoadmap === undefined ? {} : { is_roadmap: isRoadmap }),
           })
-          .select("id, user_id, name, description, slug, is_public, created_at, updated_at")
+          .select(COLLECTION_SELECT)
           .single();
 
         if (error) {
@@ -124,16 +131,17 @@ export const collectionsApi = baseApi.injectEndpoints({
       invalidatesTags: [{ type: "Collections", id: "LIST" }],
     }),
     updateCollection: builder.mutation<Collection, UpdateCollectionInput>({
-      queryFn: async ({ id, userId, name, description }) => {
+      queryFn: async ({ id, userId, name, description, isRoadmap }) => {
         const { data, error } = await supabase
           .from("collections")
           .update({
             name,
             description,
+            ...(isRoadmap === undefined ? {} : { is_roadmap: isRoadmap }),
           })
           .eq("id", id)
           .eq("user_id", userId)
-          .select("id, user_id, name, description, slug, is_public, created_at, updated_at")
+          .select(COLLECTION_SELECT)
           .single();
 
         if (error) {
@@ -185,7 +193,7 @@ export const collectionsApi = baseApi.injectEndpoints({
           .update(patch)
           .eq("id", id)
           .eq("user_id", userId)
-          .select("id, user_id, name, description, slug, is_public, created_at, updated_at")
+          .select(COLLECTION_SELECT)
           .single();
 
         if (error) {

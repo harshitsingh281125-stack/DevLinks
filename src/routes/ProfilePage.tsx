@@ -1,57 +1,79 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Camera, Globe, MapPin, User } from "lucide-react";
+import { ArrowLeft, Camera, LoaderCircle } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "@/app/hooks";
+import { Logo } from "@/components/ui/Logo";
+import { ThemeSwitch } from "@/components/ui/ThemeSwitch";
 import { selectCurrentProfile, selectCurrentUser, profileSyncSucceeded } from "@/features/auth/authSlice";
-import {
-  useUpdateMyProfileMutation,
-  useUploadAvatarMutation,
-} from "@/features/profile/profileApi";
+import { useUpdateMyProfileMutation, useUploadAvatarMutation } from "@/features/profile/profileApi";
 
-// ─── Avatar upload button ─────────────────────────────────────────────────────
+// ─── Pieces ───────────────────────────────────────────────────────────────────
+
+function Field({
+  children,
+  hint,
+  htmlFor,
+  label,
+}: {
+  children: React.ReactNode;
+  hint?: string;
+  htmlFor: string;
+  label: string;
+}) {
+  return (
+    <div className="field">
+      <label className="label" htmlFor={htmlFor}>
+        {label}
+      </label>
+      {children}
+      {hint ? <p className="hint">{hint}</p> : null}
+    </div>
+  );
+}
 
 function AvatarUpload({
   currentUrl,
   initials,
-  onUpload,
   isUploading,
+  onUpload,
 }: {
   currentUrl: string | null;
   initials: string;
-  onUpload: (file: File) => void;
   isUploading: boolean;
+  onUpload: (file: File) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   return (
-    <div className="relative w-fit">
-      <div className="h-20 w-20 rounded-full overflow-hidden bg-white/10 flex items-center justify-center text-2xl font-semibold text-white border border-white/20">
-        {currentUrl ? (
-          <img src={currentUrl} alt="Avatar" className="h-full w-full object-cover" />
-        ) : initials ? (
-          <span>{initials}</span>
-        ) : (
-          <User className="h-8 w-8 text-sand-200/50" />
-        )}
+    <div className="avatar-field">
+      <span className="avatar">
+        {currentUrl ? <img src={currentUrl} alt="" width={64} height={64} /> : initials || "?"}
+      </span>
+      <div>
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          onClick={() => inputRef.current?.click()}
+          disabled={isUploading}
+        >
+          {isUploading ? (
+            <LoaderCircle className="spinner" size={14} strokeWidth={1.75} aria-hidden="true" />
+          ) : (
+            <Camera size={14} strokeWidth={1.75} aria-hidden="true" />
+          )}
+          {isUploading ? "Uploading…" : currentUrl ? "Change photo" : "Upload photo"}
+        </button>
+        <p className="hint" style={{ marginTop: 6 }}>
+          JPG, PNG, WebP, or GIF.
+        </p>
       </div>
-      <button
-        type="button"
-        onClick={() => inputRef.current?.click()}
-        disabled={isUploading}
-        className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full bg-cyan-400 text-ink-950 shadow-md transition hover:bg-cyan-300 disabled:opacity-50"
-        aria-label="Upload avatar"
-      >
-        {isUploading ? (
-          <span className="h-3 w-3 animate-spin rounded-full border-2 border-ink-950 border-t-transparent" />
-        ) : (
-          <Camera className="h-3.5 w-3.5" />
-        )}
-      </button>
       <input
         ref={inputRef}
         type="file"
         accept="image/jpeg,image/png,image/webp,image/gif"
         className="sr-only"
+        tabIndex={-1}
+        aria-label="Upload profile photo"
         onChange={(e) => {
           const file = e.target.files?.[0];
           if (file) onUpload(file);
@@ -59,50 +81,6 @@ function AvatarUpload({
         }}
       />
     </div>
-  );
-}
-
-// ─── Field ────────────────────────────────────────────────────────────────────
-
-function Field({
-  label,
-  hint,
-  icon,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  icon?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <label className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-sand-200/60">
-        {icon}
-        {label}
-      </label>
-      {children}
-      {hint ? <p className="text-xs text-sand-200/40">{hint}</p> : null}
-    </div>
-  );
-}
-
-function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  return (
-    <input
-      {...props}
-      className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder:text-sand-200/30 outline-none transition focus:border-cyan-400/60 disabled:opacity-50"
-    />
-  );
-}
-
-function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return (
-    <textarea
-      {...props}
-      rows={3}
-      className="w-full resize-none rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder:text-sand-200/30 outline-none transition focus:border-cyan-400/60 disabled:opacity-50"
-    />
   );
 }
 
@@ -114,7 +92,7 @@ export function ProfilePage() {
   const profile = useAppSelector(selectCurrentProfile);
 
   const [updateProfile, { isLoading: isSaving, error: saveError }] = useUpdateMyProfileMutation();
-  const [uploadAvatar, { isLoading: isUploading }] = useUploadAvatarMutation();
+  const [uploadAvatar, { isLoading: isUploading, error: uploadError }] = useUploadAvatarMutation();
 
   const [displayName, setDisplayName] = useState(profile?.displayName ?? "");
   const [bio, setBio] = useState(profile?.bio ?? "");
@@ -139,6 +117,12 @@ export function ProfilePage() {
     setAvatarUrl(profile.avatarUrl ?? null);
   }, [profile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (!saved) return;
+    const t = setTimeout(() => setSaved(false), 3000);
+    return () => clearTimeout(t);
+  }, [saved]);
+
   const initials = displayName
     .split(/\s+/)
     .slice(0, 2)
@@ -148,9 +132,7 @@ export function ProfilePage() {
   async function handleAvatarUpload(file: File) {
     if (!user) return;
     const result = await uploadAvatar({ userId: user.id, file });
-    if ("data" in result && result.data) {
-      setAvatarUrl(result.data);
-    }
+    if ("data" in result && result.data) setAvatarUrl(result.data);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -164,7 +146,7 @@ export function ProfilePage() {
         bio: bio.trim() || null,
         location: location.trim() || null,
         websiteUrl: websiteUrl.trim() || null,
-        twitterHandle: twitterHandle.trim() || null,
+        twitterHandle: twitterHandle.trim().replace(/^@/, "") || null,
         linkedinUrl: linkedinUrl.trim() || null,
         githubUsername: githubUsername.trim() || null,
         avatarUrl,
@@ -174,142 +156,164 @@ export function ProfilePage() {
     if ("data" in result && result.data) {
       dispatch(profileSyncSucceeded(result.data));
       setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
     }
   }
 
+  const error = saveError ?? uploadError;
   const errorMessage =
-    saveError != null && typeof saveError === "object" && "message" in saveError
-      ? String((saveError as { message: unknown }).message)
+    error != null && typeof error === "object" && "message" in error
+      ? String((error as { message: unknown }).message)
       : null;
 
   return (
-    <div className="mx-auto w-full max-w-2xl px-4 py-12">
-      <Link
-        to="/app"
-        className="inline-flex items-center gap-1.5 text-sm text-sand-200/50 transition hover:text-white"
-      >
-        <ArrowLeft className="h-3.5 w-3.5" />
-        Back to dashboard
-      </Link>
+    <div className="site">
+      <a className="skip-link" href="#main">
+        Skip to content
+      </a>
+      <header className="plain-header">
+        <div className="plain-header-inner">
+          <Link to="/app" className="btn btn-ghost btn-sm" style={{ marginLeft: -10 }}>
+            <ArrowLeft size={15} strokeWidth={1.75} aria-hidden="true" />
+            Dashboard
+          </Link>
+          <Link to="/" aria-label="DevLinks home">
+            <Logo />
+          </Link>
+          <ThemeSwitch />
+        </div>
+      </header>
 
-      <h1 className="mt-6 text-2xl font-semibold text-white">Your profile</h1>
-      <p className="mt-1 text-sm text-sand-200/55">
-        Shown to visitors of your public collections.
-      </p>
+      <main id="main" className="narrow" tabIndex={-1}>
+        <h1 className="narrow-title">Profile</h1>
+        <p className="narrow-lede">Shown on your public collections. Everything here is optional.</p>
 
-      <form onSubmit={handleSubmit} className="mt-8 space-y-8">
-        {/* Avatar + display name */}
-        <div className="flex items-start gap-6">
-          <AvatarUpload
-            currentUrl={avatarUrl}
-            initials={initials}
-            onUpload={handleAvatarUpload}
-            isUploading={isUploading}
-          />
-          <div className="flex-1">
-            <Field label="Display name">
-              <TextInput
+        <form onSubmit={handleSubmit} className="form-panel" noValidate>
+          <div className="form-panel-section">
+            <AvatarUpload
+              currentUrl={avatarUrl}
+              initials={initials}
+              isUploading={isUploading}
+              onUpload={(file) => void handleAvatarUpload(file)}
+            />
+          </div>
+
+          <div className="form-panel-section">
+            <Field htmlFor="profile-name" label="Display name">
+              <input
+                id="profile-name"
+                className="input"
+                name="name"
+                autoComplete="name"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="Your name"
+                placeholder="Ada Lovelace…"
+                maxLength={60}
+              />
+            </Field>
+            <Field htmlFor="profile-bio" label="Bio" hint={`${bio.length}/200 characters`}>
+              <textarea
+                id="profile-bio"
+                className="textarea"
+                name="bio"
+                rows={3}
+                value={bio}
+                onChange={(e) => setBio(e.target.value)}
+                placeholder="What you work on, what you read about…"
+                maxLength={200}
+              />
+            </Field>
+            <Field htmlFor="profile-location" label="Location">
+              <input
+                id="profile-location"
+                className="input"
+                name="location"
+                autoComplete="address-level2"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                placeholder="Berlin, Germany…"
                 maxLength={60}
               />
             </Field>
           </div>
-        </div>
 
-        {/* Bio */}
-        <Field label="Bio" hint="A short description shown on your public collections.">
-          <TextArea
-            value={bio}
-            onChange={(e) => setBio(e.target.value)}
-            placeholder="What do you work on? What are you into?"
-            maxLength={200}
-          />
-        </Field>
-
-        {/* Location */}
-        <Field label="Location" icon={<MapPin className="h-3 w-3" />}>
-          <TextInput
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-            placeholder="City, Country"
-            maxLength={60}
-          />
-        </Field>
-
-        <div className="border-t border-white/8" />
-
-        {/* Links */}
-        <div className="grid gap-5 sm:grid-cols-2">
-          <Field label="Website" icon={<Globe className="h-3 w-3" />}>
-            <TextInput
-              type="url"
-              value={websiteUrl}
-              onChange={(e) => setWebsiteUrl(e.target.value)}
-              placeholder="https://yoursite.dev"
-            />
-          </Field>
-
-          <Field label="GitHub">
-            <div className="relative">
-              <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-sand-200/40">
-                github.com/
-              </span>
-              <input
-                value={githubUsername}
-                onChange={(e) => setGithubUsername(e.target.value)}
-                placeholder="username"
-                maxLength={39}
-                className="w-full rounded-xl border border-white/10 bg-white/5 py-2.5 pl-[6.5rem] pr-3 text-sm text-white placeholder:text-sand-200/30 outline-none transition focus:border-cyan-400/60"
-              />
+          <div className="form-panel-section">
+            <h2 className="section-title">Links</h2>
+            <div className="form-grid" style={{ marginTop: 0 }}>
+              <Field htmlFor="profile-website" label="Website">
+                <input
+                  id="profile-website"
+                  className="input"
+                  type="url"
+                  inputMode="url"
+                  name="website"
+                  autoComplete="url"
+                  spellCheck={false}
+                  value={websiteUrl}
+                  onChange={(e) => setWebsiteUrl(e.target.value)}
+                  placeholder="https://yoursite.dev…"
+                />
+              </Field>
+              <Field htmlFor="profile-github" label="GitHub">
+                <div className="input-affix">
+                  <span aria-hidden="true">github.com/</span>
+                  <input
+                    id="profile-github"
+                    name="github"
+                    autoComplete="off"
+                    spellCheck={false}
+                    value={githubUsername}
+                    onChange={(e) => setGithubUsername(e.target.value)}
+                    placeholder="username…"
+                    maxLength={39}
+                  />
+                </div>
+              </Field>
+              <Field htmlFor="profile-x" label="X (Twitter)">
+                <div className="input-affix">
+                  <span aria-hidden="true">@</span>
+                  <input
+                    id="profile-x"
+                    name="twitter"
+                    autoComplete="off"
+                    spellCheck={false}
+                    value={twitterHandle}
+                    onChange={(e) => setTwitterHandle(e.target.value)}
+                    placeholder="handle…"
+                    maxLength={50}
+                  />
+                </div>
+              </Field>
+              <Field htmlFor="profile-linkedin" label="LinkedIn">
+                <input
+                  id="profile-linkedin"
+                  className="input"
+                  type="url"
+                  inputMode="url"
+                  name="linkedin"
+                  autoComplete="off"
+                  spellCheck={false}
+                  value={linkedinUrl}
+                  onChange={(e) => setLinkedinUrl(e.target.value)}
+                  placeholder="https://linkedin.com/in/you…"
+                />
+              </Field>
             </div>
-          </Field>
+          </div>
 
-          <Field label="Twitter / X">
-            <div className="relative">
-              <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-sand-200/40">
-                @
-              </span>
-              <input
-                value={twitterHandle}
-                onChange={(e) => setTwitterHandle(e.target.value)}
-                placeholder="handle"
-                maxLength={50}
-                className="w-full rounded-xl border border-white/10 bg-white/5 py-2.5 pl-7 pr-3 text-sm text-white placeholder:text-sand-200/30 outline-none transition focus:border-cyan-400/60"
-              />
-            </div>
-          </Field>
-
-          <Field label="LinkedIn">
-            <TextInput
-              type="url"
-              value={linkedinUrl}
-              onChange={(e) => setLinkedinUrl(e.target.value)}
-              placeholder="https://linkedin.com/in/you"
-            />
-          </Field>
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-between pt-2">
-          {errorMessage ? (
-            <p className="text-sm text-rose-300">{errorMessage}</p>
-          ) : saved ? (
-            <p className="text-sm text-emerald-400">Profile saved.</p>
-          ) : (
-            <span />
-          )}
-          <button
-            type="submit"
-            disabled={isSaving || isUploading}
-            className="rounded-full bg-cyan-400 px-6 py-2.5 text-sm font-semibold text-ink-950 transition hover:bg-cyan-300 disabled:opacity-50"
-          >
-            {isSaving ? "Saving…" : "Save profile"}
-          </button>
-        </div>
-      </form>
+          <div className="form-panel-foot">
+            <p
+              className={`form-panel-status${errorMessage ? " is-error" : saved ? " is-ok" : ""}`}
+              role="status"
+              aria-live="polite"
+            >
+              {errorMessage ?? (saved ? "Profile saved." : "")}
+            </p>
+            <button type="submit" className="btn btn-primary" disabled={isSaving || isUploading}>
+              {isSaving ? "Saving…" : "Save profile"}
+            </button>
+          </div>
+        </form>
+      </main>
     </div>
   );
 }

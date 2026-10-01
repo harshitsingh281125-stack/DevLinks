@@ -1,28 +1,27 @@
-import { AlertTriangle, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { forwardRef, useState } from "react";
+import { CornerDownLeft, Link2, LoaderCircle, TriangleAlert } from "lucide-react";
 import { requestMetadataPreview } from "@/features/bookmarks/metadataApi";
 import type { Collection, MetadataPreview } from "@/lib/types";
 
 type UrlSaveEntryProps = {
   activeCollection: Collection | null;
-  onOpenSaveModal: () => void;
   onPreviewReady: (preview: MetadataPreview) => void;
-  preview: MetadataPreview | null;
 };
 
-export function UrlSaveEntry({
-  activeCollection,
-  onPreviewReady,
-}: UrlSaveEntryProps) {
+export const UrlSaveEntry = forwardRef<HTMLInputElement, UrlSaveEntryProps>(function UrlSaveEntry(
+  { activeCollection, onPreviewReady },
+  inputRef,
+) {
   const [urlInput, setUrlInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const disabled = !activeCollection;
 
   async function handleSubmit() {
     const trimmed = urlInput.trim();
-    if (!trimmed) return;
-    if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
-      setError("Enter a valid URL starting with https://");
+    if (!trimmed || isLoading) return;
+    if (!/^https?:\/\//i.test(trimmed)) {
+      setError("Links need to start with http:// or https://. Paste the full address from your browser.");
       return;
     }
     setIsLoading(true);
@@ -35,56 +34,69 @@ export function UrlSaveEntry({
       setError(
         typeof err === "object" && err !== null && "message" in err
           ? String((err as { message: unknown }).message)
-          : "Metadata preview could not be generated.",
+          : "The preview couldn’t be generated. Check the link and try again.",
       );
     } finally {
       setIsLoading(false);
     }
   }
 
-  if (isLoading) {
-    return (
-      <div className="dl-addbar-loading">
-        <span className="dl-addbar-prompt">$&nbsp;save</span>
-        <Loader2 size={13} className="dl-spinner" style={{ color: "var(--accent)" }} />
-        <span>fetching metadata…</span>
-      </div>
-    );
-  }
-
   return (
-    <>
-      {!activeCollection ? (
-        <div className="dl-fetch-notice warn">
-          <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
-          <span>Create or select a collection before saving a bookmark.</span>
-        </div>
-      ) : null}
-
-      <div className="dl-addbar">
-        <span className="dl-addbar-prompt" style={!activeCollection ? { color: "var(--fg-4)" } : undefined}>$&nbsp;save</span>
+    <div className="savebar-wrap">
+      <form
+        className="savebar"
+        noValidate
+        data-disabled={disabled}
+        onSubmit={(e) => {
+          e.preventDefault();
+          void handleSubmit();
+        }}
+      >
+        {isLoading ? (
+          <LoaderCircle className="spinner" size={17} strokeWidth={1.75} aria-hidden="true" />
+        ) : (
+          <Link2 size={17} strokeWidth={1.75} aria-hidden="true" />
+        )}
         <input
-          type="text"
-          placeholder={activeCollection ? "paste a URL to save — https://…" : "select a collection first"}
+          ref={inputRef}
+          type="url"
+          inputMode="url"
+          name="url"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder={
+            disabled
+              ? "Create a collection to start saving links…"
+              : `Paste a link to save to ${activeCollection.name}…`
+          }
           value={urlInput}
-          onChange={(e) => setUrlInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") void handleSubmit();
+          onChange={(e) => {
+            setUrlInput(e.target.value);
+            if (error) setError(null);
           }}
-          disabled={!activeCollection}
-          aria-label="URL to save"
+          disabled={disabled || isLoading}
+          aria-label="Link to save"
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? "savebar-error" : undefined}
         />
-        <span className="dl-addbar-hint">
-          <span className="dl-kbd">⏎</span> to save
-        </span>
-      </div>
+        {isLoading ? (
+          <span className="savebar-status" role="status">
+            Fetching preview…
+          </span>
+        ) : (
+          <button type="submit" className="btn btn-secondary btn-sm" disabled={disabled || !urlInput.trim()}>
+            Fetch preview
+            <CornerDownLeft size={13} strokeWidth={1.75} aria-hidden="true" />
+          </button>
+        )}
+      </form>
 
       {error ? (
-        <div className="dl-fetch-notice error" style={{ marginTop: -8, marginBottom: 10 }}>
-          <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
-          <span>{error}</span>
+        <div id="savebar-error" className="notice notice-danger" role="alert">
+          <TriangleAlert size={15} strokeWidth={1.75} />
+          <div className="notice-body">{error}</div>
         </div>
       ) : null}
-    </>
+    </div>
   );
-}
+});

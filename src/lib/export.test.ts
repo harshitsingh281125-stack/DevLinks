@@ -18,6 +18,7 @@ const col: Collection = {
   description: "My Rust reading list",
   slug: "learning-rust",
   isPublic: true,
+  isRoadmap: false,
   createdAt: "2026-01-01T00:00:00Z",
   updatedAt: "2026-01-01T00:00:00Z",
 };
@@ -29,6 +30,7 @@ const col2: Collection = {
   description: null,
   slug: "frontend",
   isPublic: false,
+  isRoadmap: false,
   createdAt: "2026-01-02T00:00:00Z",
   updatedAt: "2026-01-02T00:00:00Z",
 };
@@ -46,6 +48,7 @@ const bm1: Bookmark = {
   imageUrl: null,
   resourceType: "article",
   tags: ["rust", "async"],
+  position: 1,
   searchText: "why async rust",
   createdAt: "2026-03-15T10:00:00Z",
   updatedAt: "2026-03-15T10:00:00Z",
@@ -64,6 +67,7 @@ const bm2: Bookmark = {
   imageUrl: null,
   resourceType: "documentation",
   tags: ["rust", "tokio"],
+  position: 1,
   searchText: "tokio tutorial",
   createdAt: "2026-03-16T10:00:00Z",
   updatedAt: "2026-03-16T10:00:00Z",

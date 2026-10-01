@@ -2,22 +2,29 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>DevLinks — Developer Bookmark Manager</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap">
-    <meta name="description" content="Save, organise, and share developer links with DevLinks." />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f9f9fa" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0f1012" media="(prefers-color-scheme: dark)" />
+    <title>DevLinks · Bookmarks for developers</title>
+    <meta name="description" content="Save developer links once, find them again in seconds, and share the good ones as public collections." />
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="DevLinks" />
-    <meta property="og:title" content="DevLinks — Developer Bookmark Manager" />
-    <meta property="og:description" content="Save, organise, and share developer links with DevLinks." />
+    <meta property="og:title" content="DevLinks · Bookmarks for developers" />
+    <meta property="og:description" content="Save developer links once, find them again in seconds, and share the good ones as public collections." />
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary" />
-    <meta name="twitter:title" content="DevLinks — Developer Bookmark Manager" />
-    <meta name="twitter:description" content="Save, organise, and share developer links with DevLinks." />
+    <meta name="twitter:title" content="DevLinks · Bookmarks for developers" />
+    <meta name="twitter:description" content="Save developer links once, find them again in seconds, and share the good ones as public collections." />
+    <!-- Apply the stored theme before first paint so the page never flashes the wrong mode. -->
+    <script>
+      try {
+        var pref = localStorage.getItem("devlinks:theme");
+        if (pref === "light" || pref === "dark") document.documentElement.dataset.theme = pref;
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

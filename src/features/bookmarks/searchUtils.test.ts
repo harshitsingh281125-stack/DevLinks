@@ -22,6 +22,7 @@ const makeBookmark = (overrides: Partial<Bookmark> = {}): Bookmark => ({
   imageUrl: null,
   resourceType: "documentation",
   tags: ["react", "javascript", "hooks"],
+  position: 1,
   searchText: "react hooks guide react.dev/reference/react/hooks official guide react hooks usestate useeffect react.dev react javascript hooks",
   createdAt: "2026-04-19T00:00:00Z",
   updatedAt: "2026-04-19T00:00:00Z",

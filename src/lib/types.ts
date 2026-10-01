@@ -42,6 +42,8 @@ export interface Collection {
   description: string | null;
   slug: string | null;
   isPublic: boolean;
+  /** Shown as ordered, numbered steps (bookmark.position order). */
+  isRoadmap: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -59,6 +61,8 @@ export interface Bookmark {
   imageUrl: string | null;
   resourceType: ResourceType | null;
   tags: string[];
+  /** 1-based order within the collection; assigned by the database. */
+  position: number;
   searchText: string;
   createdAt: string;
   updatedAt: string;

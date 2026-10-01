@@ -1,362 +1,39 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { authenticatedSession, mockSupabase, readMutations, readOauthCalls } from "./support/mockSupabase";
 
-type MockSession = {
-  access_token: string;
-  refresh_token: string;
-  expires_in: number;
-  expires_at: number;
-  token_type: "bearer";
-  user: {
-    id: string;
-    email: string;
-    user_metadata: {
-      full_name: string;
-      user_name?: string;
-    };
-  };
-};
+// ─── Landing ──────────────────────────────────────────────────────────────────
 
-type MockCollectionRow = {
-  created_at: string;
-  description: string | null;
-  id: string;
-  is_public: boolean;
-  name: string;
-  slug: string | null;
-  updated_at: string;
-  user_id: string;
-};
-
-type MockSupabaseOptions = {
-  protectedDeleteIds?: string[];
-  session: MockSession | null;
-};
-
-const authenticatedSession: MockSession = {
-  access_token: "test-access-token",
-  refresh_token: "test-refresh-token",
-  expires_in: 3600,
-  expires_at: 4_102_444_800,
-  token_type: "bearer",
-  user: {
-    id: "6e2f0dc2-c932-4cc3-bef1-1b04fa6a6db5",
-    email: "harshit@example.com",
-    user_metadata: {
-      full_name: "Harshit Singh",
-      user_name: "harshit-singh",
-    },
-  },
-};
-
-async function mockSupabase(page: Page, options: MockSupabaseOptions) {
-  const initialCollections: MockCollectionRow[] = [
-    {
-      id: "collection-1",
-      user_id: authenticatedSession.user.id,
-      name: "React Debugging",
-      description: "Tracing render bugs and hydration issues.",
-      slug: null,
-      is_public: false,
-      created_at: "2026-04-13T00:00:00.000Z",
-      updated_at: "2026-04-13T00:00:00.000Z",
-    },
-    {
-      id: "collection-2",
-      user_id: authenticatedSession.user.id,
-      name: "API/Auth",
-      description: "OAuth, JWT, and session handling notes.",
-      slug: null,
-      is_public: false,
-      created_at: "2026-04-13T00:01:00.000Z",
-      updated_at: "2026-04-13T00:01:00.000Z",
-    },
-  ];
-
-  await page.addInitScript(
-    ({ initialProtectedDeleteIds, initialSession, seedCollections }) => {
-      const listeners: Array<(event: string, session: unknown) => void> = [];
-      const profileUpserts: unknown[] = [];
-      const oauthCalls: unknown[] = [];
-      const collectionMutations: unknown[] = [];
-      const collections = [...seedCollections];
-      const protectedDeleteIds = new Set(initialProtectedDeleteIds);
-      let currentSession = initialSession;
-
-      function matchesFilters<T extends Record<string, unknown>>(
-        row: T,
-        filters: Array<{ field: string; value: unknown }>,
-      ) {
-        return filters.every((filter) => row[filter.field] === filter.value);
-      }
-
-      function createCollectionsTable() {
-        return {
-          select(columns?: string) {
-            const filters: Array<{ field: string; value: unknown }> = [];
-
-            const selection = {
-              eq(field: string, value: unknown) {
-                filters.push({ field, value });
-                return selection;
-              },
-              async order(field: string, options?: { ascending?: boolean }) {
-                const rows = collections
-                  .filter((row) => matchesFilters(row, filters))
-                  .sort((left, right) => {
-                    if (left[field] === right[field]) {
-                      return 0;
-                    }
-
-                    const direction = options?.ascending === false ? -1 : 1;
-
-                    return left[field] > right[field] ? direction : -direction;
-                  });
-
-                return {
-                  data: columns === "id"
-                    ? rows.map((row) => ({ id: row.id }))
-                    : rows,
-                  error: null,
-                };
-              },
-            };
-
-            return selection;
-          },
-          insert(payload: Record<string, unknown>) {
-            return {
-              select() {
-                return {
-                  async single() {
-                    const row = {
-                      id: `collection-${collections.length + 1}`,
-                      user_id: payload.user_id as string,
-                      name: payload.name as string,
-                      description: (payload.description as string | null) ?? null,
-                      slug: null,
-                      is_public: false,
-                      created_at: "2026-04-13T01:00:00.000Z",
-                      updated_at: "2026-04-13T01:00:00.000Z",
-                    };
-
-                    collections.push(row);
-                    collectionMutations.push({ type: "insert", payload: row });
-
-                    return { data: row, error: null };
-                  },
-                };
-              },
-            };
-          },
-          update(payload: Record<string, unknown>) {
-            const filters: Array<{ field: string; value: unknown }> = [];
-
-            const selection = {
-              eq(field: string, value: unknown) {
-                filters.push({ field, value });
-                return selection;
-              },
-              select() {
-                return {
-                  async single() {
-                    const row = collections.find((item) => matchesFilters(item, filters));
-
-                    if (!row) {
-                      return {
-                        data: null,
-                        error: { code: "PGRST116", message: "Collection not found." },
-                      };
-                    }
-
-                    Object.assign(row, payload, {
-                      updated_at: "2026-04-13T02:00:00.000Z",
-                    });
-
-                    collectionMutations.push({ type: "update", payload: row });
-
-                    return { data: row, error: null };
-                  },
-                };
-              },
-            };
-
-            return selection;
-          },
-          delete() {
-            const filters: Array<{ field: string; value: unknown }> = [];
-
-            const selection = {
-              eq(field: string, value: unknown) {
-                filters.push({ field, value });
-                return selection;
-              },
-              select() {
-                return {
-                  async single() {
-                    const rowIndex = collections.findIndex((item) =>
-                      matchesFilters(item, filters),
-                    );
-
-                    if (rowIndex < 0) {
-                      return {
-                        data: null,
-                        error: { code: "PGRST116", message: "Collection not found." },
-                      };
-                    }
-
-                    const row = collections[rowIndex];
-
-                    if (protectedDeleteIds.has(row.id)) {
-                      return {
-                        data: null,
-                        error: {
-                          code: "23503",
-                          message: "update or delete on table collections violates foreign key",
-                        },
-                      };
-                    }
-
-                    collections.splice(rowIndex, 1);
-                    collectionMutations.push({ type: "delete", payload: { id: row.id } });
-
-                    return { data: { id: row.id }, error: null };
-                  },
-                };
-              },
-            };
-
-            return selection;
-          },
-        };
-      }
-
-      (window as typeof window & {
-        __DEVLINKS_COLLECTION_MUTATIONS__?: unknown[];
-        __DEVLINKS_OAUTH_CALLS__?: unknown[];
-        __DEVLINKS_PROFILE_UPSERTS__?: unknown[];
-      }).__DEVLINKS_PROFILE_UPSERTS__ = profileUpserts;
-      (window as typeof window & {
-        __DEVLINKS_COLLECTION_MUTATIONS__?: unknown[];
-      }).__DEVLINKS_COLLECTION_MUTATIONS__ = collectionMutations;
-      (window as typeof window & {
-        __DEVLINKS_OAUTH_CALLS__?: unknown[];
-      }).__DEVLINKS_OAUTH_CALLS__ = oauthCalls;
-
-      (window as typeof window & { __DEVLINKS_SUPABASE__: unknown }).__DEVLINKS_SUPABASE__ = {
-        auth: {
-          getSession: async () => ({
-            data: { session: currentSession },
-            error: null,
-          }),
-          onAuthStateChange: (callback: (event: string, session: unknown) => void) => {
-            listeners.push(callback);
-
-            return {
-              data: {
-                subscription: {
-                  unsubscribe: () => {
-                    const index = listeners.indexOf(callback);
-
-                    if (index >= 0) {
-                      listeners.splice(index, 1);
-                    }
-                  },
-                },
-              },
-            };
-          },
-          signInWithOAuth: async (oauthOptions: unknown) => {
-            oauthCalls.push(oauthOptions);
-
-            return {
-              data: { provider: "github", url: null },
-              error: null,
-            };
-          },
-          signOut: async () => {
-            currentSession = null;
-            listeners.forEach((listener) => listener("SIGNED_OUT", null));
-
-            return { error: null };
-          },
-        },
-        from: (table: string) => {
-          if (table === "profiles") {
-            return {
-              upsert: (payload: unknown) => {
-                profileUpserts.push({ table, payload });
-
-                return {
-                  select: () => ({
-                    single: async () => ({
-                      data: {
-                        ...(payload as Record<string, unknown>),
-                        created_at: "2026-04-13T00:00:00.000Z",
-                        updated_at: "2026-04-13T00:00:00.000Z",
-                      },
-                      error: null,
-                    }),
-                  }),
-                };
-              },
-            };
-          }
-
-          if (table === "collections") {
-            return createCollectionsTable();
-          }
-
-          throw new Error(`Unsupported mock table: ${table}`);
-        },
-      } as never;
-    },
-    {
-      initialProtectedDeleteIds: options.protectedDeleteIds ?? [],
-      initialSession: options.session,
-      seedCollections: initialCollections,
-    },
-  );
-}
-
-test("landing page renders the auth CTA", async ({ page }) => {
+test("landing page renders the hero and sign-in CTA", async ({ page }) => {
   await mockSupabase(page, { session: null });
   await page.goto("/");
 
-  await expect(
-    page.getByRole("heading", {
-      name: /save useful links once, then retrieve them like a real knowledge base\./i,
-    }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: /sign in with github/i }),
-  ).toBeVisible();
-  await expect(page.getByText(/built for developer research workflows/i)).toBeVisible();
-  await expect(page.getByText(/sign in and start your first collection\./i)).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: /save a link once\. find it in seconds\./i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /sign in with github/i }).first()).toBeVisible();
 });
 
-test("landing page sign in CTA starts github oauth with the requested redirect", async ({
-  page,
-}) => {
+test("the landing demo runs the real matching and tagging rules", async ({ page }) => {
+  await mockSupabase(page, { session: null });
+  await page.goto("/");
+
+  const input = page.getByLabel("Try a link");
+  await input.fill("https://github.com/vitejs/vite/?utm_source=x");
+
+  const readout = page.locator(".readout");
+  await expect(readout.getByText("github.com/vitejs/vite", { exact: true })).toBeVisible();
+  await expect(readout.getByText("Repo", { exact: true })).toBeVisible();
+  await expect(readout.getByText("vite", { exact: true })).toBeVisible();
+  await expect(readout.getByText("?utm_source=x")).toBeVisible();
+});
+
+test("sign-in CTA starts GitHub OAuth with the requested redirect", async ({ page }) => {
   await mockSupabase(page, { session: null });
   await page.goto("/?redirectTo=%2Fapp");
 
-  await page.getByRole("button", { name: /sign in with github/i }).click();
+  await page.getByRole("button", { name: /sign in with github/i }).first().click();
 
-  const oauthCalls = await page.evaluate(() => {
-    return (
-      (window as typeof window & {
-        __DEVLINKS_OAUTH_CALLS__?: unknown[];
-      }).__DEVLINKS_OAUTH_CALLS__ ?? []
-    );
-  });
-
+  const oauthCalls = await readOauthCalls(page);
   expect(oauthCalls).toHaveLength(1);
-  expect(oauthCalls[0]).toMatchObject({
-    provider: "github",
-    options: {
-      redirectTo: "http://localhost:5173/app",
-    },
-  });
+  expect(oauthCalls[0]).toMatchObject({ provider: "github", options: { redirectTo: expect.stringMatching(/\/app$/) } });
 });
 
 test("unauthenticated users are redirected away from /app", async ({ page }) => {
@@ -364,51 +41,47 @@ test("unauthenticated users are redirected away from /app", async ({ page }) => 
   await page.goto("/app");
 
   await expect(page).toHaveURL(/\/\?redirectTo=%2Fapp$/);
-  await expect(
-    page.getByRole("button", { name: /sign in with github/i }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: /sign in with github/i }).first()).toBeVisible();
 });
 
-test("authenticated users can manage collections from the dashboard shell", async ({
-  page,
-}) => {
+test("the theme switch pins light and dark", async ({ page }) => {
+  await mockSupabase(page, { session: null });
+  await page.goto("/");
+
+  const footer = page.locator(".site-footer");
+  await footer.getByRole("radio", { name: "Dark theme" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await footer.getByRole("radio", { name: "Match system theme" }).click();
+  await expect(page.locator("html")).not.toHaveAttribute("data-theme", /.+/);
+});
+
+// ─── Dashboard ────────────────────────────────────────────────────────────────
+
+test("users can create and rename collections", async ({ page }) => {
   await mockSupabase(page, { session: authenticatedSession });
   await page.goto("/app");
 
-  await expect(
-    page.getByRole("heading", { name: /save, search, and shape your dev links\./i }),
-  ).toBeVisible();
-  await expect(page.getByRole("navigation", { name: /collections/i })).toBeVisible();
-  await expect(
-    page.getByRole("navigation", { name: /collections/i }).getByText("React Debugging"),
-  ).toBeVisible();
+  const nav = page.getByRole("navigation", { name: "Collections", exact: true });
+  await expect(nav.getByText("React Debugging")).toBeVisible();
 
-  await page.getByRole("button", { name: /open create collection editor/i }).click();
+  await nav.getByRole("button", { name: "New collection" }).click();
   await page.getByLabel(/collection name/i).fill("CSS Layout");
-  await page
-    .getByLabel(/description/i)
-    .fill("Grid, flexbox, and responsive layout references.");
+  await page.getByLabel(/description/i).fill("Grid, flexbox, and responsive layout references.");
   await page.getByRole("button", { name: "Create collection", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "CSS Layout" })).toBeVisible();
 
-  await page.getByRole("button", { name: /^api\/auth/i }).click();
-  await page.getByRole("button", { name: /^edit$/i }).click();
+  await nav.getByRole("button", { name: /^api\/auth/i }).click();
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
   await page.getByLabel(/collection name/i).fill("API and Auth");
   await page.getByRole("button", { name: /save changes/i }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "API and Auth" })).toBeVisible();
 
-  await expect(page.getByRole("heading", { name: /api and auth/i })).toBeVisible();
-
-  const collectionMutations = await page.evaluate(() => {
-    return (
-      (window as typeof window & {
-        __DEVLINKS_COLLECTION_MUTATIONS__?: unknown[];
-      }).__DEVLINKS_COLLECTION_MUTATIONS__ ?? []
-    );
-  });
-
-  expect(collectionMutations).toEqual(
+  const mutations = await readMutations(page);
+  expect(mutations).toEqual(
     expect.arrayContaining([
-      expect.objectContaining({ type: "insert" }),
+      expect.objectContaining({ table: "collections", type: "insert" }),
       expect.objectContaining({
+        table: "collections",
         type: "update",
         payload: expect.objectContaining({ name: "API and Auth" }),
       }),
@@ -416,94 +89,244 @@ test("authenticated users can manage collections from the dashboard shell", asyn
   );
 });
 
-test("authenticated users can trigger metadata preview from the dashboard", async ({
-  page,
-}) => {
+test("pasting a link opens the preview and saves a bookmark", async ({ page }) => {
   await mockSupabase(page, { session: authenticatedSession });
-  await page.route("**/api/metadata", async (route) => {
-    await route.fulfill({
+  await page.route("**/api/metadata", (route) =>
+    route.fulfill({
+      contentType: "application/json",
       body: JSON.stringify({
+        url: "https://react.dev/learn?source=guide",
+        normalizedUrl: "https://react.dev/learn?source=guide",
+        title: "Learn React",
         description: "Learn the fundamentals of React with the official docs.",
         domain: "react.dev",
-        faviconUrl: "https://react.dev/favicon.ico",
-        fetchStatus: "success",
+        faviconUrl: null,
         imageUrl: null,
-        normalizedUrl: "https://react.dev/learn?source=guide",
         resourceType: "documentation",
         suggestedTags: ["react"],
-        title: "Learn React",
-        url: "https://react.dev/learn?source=guide",
+        fetchStatus: "success",
       }),
-      contentType: "application/json",
-      status: 200,
-    });
-  });
+    }),
+  );
   await page.goto("/app");
 
-  await page.getByPlaceholder("https://react.dev/learn").fill("https://React.dev/learn?source=guide");
-  await page.getByRole("button", { name: /fetch metadata/i }).click();
+  await page.getByLabel("Link to save").fill("https://React.dev/learn?source=guide");
+  await page.getByRole("button", { name: /fetch preview/i }).click();
 
-  await expect(page.getByRole("heading", { name: /learn react/i }).first()).toBeVisible();
-  await expect(page.getByText("react.dev", { exact: true })).toBeVisible();
-  await expect(
-    page.getByText("https://react.dev/learn?source=guide"),
-  ).toBeVisible();
-  await expect(
-    page.getByText(/learn the fundamentals of react with the official docs\./i),
-  ).toBeVisible();
-  await expect(page.getByText(/^success$/i)).toBeVisible();
-  await expect(page.getByText(/^react$/i)).toBeVisible();
+  const dialog = page.getByRole("dialog", { name: "Save bookmark" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel("Title")).toHaveValue("Learn React");
+  await expect(dialog.getByText("Detected: Docs")).toBeVisible();
+  await expect(dialog.getByText("react", { exact: true })).toBeVisible();
+
+  await dialog.getByRole("button", { name: "Save bookmark" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole("status").filter({ hasText: "Saved to React Debugging" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 3, name: "Learn React" })).toBeVisible();
 });
 
-test("non-empty collections cannot be deleted", async ({ page }) => {
-  await mockSupabase(page, {
-    protectedDeleteIds: ["collection-1"],
-    session: authenticatedSession,
-  });
+test("collections that still hold bookmarks can't be deleted", async ({ page }) => {
+  await mockSupabase(page, { session: authenticatedSession, seed: { withBookmarks: true } });
   await page.goto("/app");
 
-  await page.getByRole("button", { name: /^react debugging/i }).click();
-  await page.getByRole("button", { name: /^edit$/i }).click();
-  await page.getByRole("button", { name: /delete collection/i }).click();
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await page.getByRole("button", { name: "Delete…" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Delete collection" }).click();
 
   await expect(
-    page.getByText(
-      /this collection cannot be deleted until all bookmarks inside it are removed\./i,
-    ),
+    page.getByText(/this collection cannot be deleted until all bookmarks inside it are removed\./i),
   ).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Collection settings" })).toBeVisible();
 });
 
-test("authenticated users can open the dashboard and sign out", async ({ page }) => {
+test("filters narrow the list and are reflected in the URL", async ({ page }) => {
+  await mockSupabase(page, { session: authenticatedSession, seed: { withBookmarks: true } });
+  await page.goto("/app");
+
+  await expect(page.locator(".bm-card")).toHaveCount(10);
+  await page.getByRole("group", { name: "Filter by type" }).getByRole("button", { name: /^repo/i }).click();
+  await expect(page).toHaveURL(/type=repo/);
+  await expect(page.locator(".bm-card")).toHaveCount(1);
+  await page.getByRole("button", { name: "Clear filters" }).first().click();
+  await expect(page.locator(".bm-card")).toHaveCount(10);
+});
+
+test("users can open the account menu and sign out", async ({ page }) => {
   await mockSupabase(page, { session: authenticatedSession });
   await page.goto("/app");
 
+  await page.getByRole("button", { name: /harshit singh/i }).click();
   await expect(page.getByText("harshit@example.com")).toBeVisible();
-  await expect(
-    page.getByPlaceholder(/search bookmarks, urls, descriptions, and tags/i),
-  ).toBeVisible();
 
-  const profileUpserts = await page.evaluate(() => {
-    return (
-      (window as typeof window & {
-        __DEVLINKS_PROFILE_UPSERTS__?: unknown[];
-      }).__DEVLINKS_PROFILE_UPSERTS__ ?? []
-    );
+  const mutations = await readMutations(page);
+  expect(mutations).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        table: "profiles",
+        type: "upsert",
+        payload: expect.objectContaining({ id: authenticatedSession.user.id, email: authenticatedSession.user.email }),
+      }),
+    ]),
+  );
+
+  await page.getByRole("menuitem", { name: /sign out/i }).click();
+  await expect(page).toHaveURL(/\/\?redirectTo=%2Fapp/);
+});
+
+// ─── Public pages ─────────────────────────────────────────────────────────────
+
+test("public collections render for signed-out visitors, unknown slugs don't", async ({ page }) => {
+  await mockSupabase(page, { session: null });
+  await page.goto("/public/collections/react-debugging");
+
+  await expect(page.getByRole("heading", { level: 1, name: "React Debugging" })).toBeVisible();
+  await expect(page.getByText(/curated by/i)).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: "React Developer Tools" })).toBeVisible();
+
+  await page.goto("/public/collections/does-not-exist");
+  await expect(page.getByRole("heading", { level: 1, name: /isn’t public/i })).toBeVisible();
+});
+
+test("the landing page lists public collections from the database", async ({ page }) => {
+  await mockSupabase(page, { session: null });
+  await page.goto("/");
+
+  const feed = page.locator("#explore");
+  await expect(feed.getByRole("link", { name: /react debugging/i })).toBeVisible();
+  await expect(feed.getByRole("link", { name: /css layout/i })).toBeVisible();
+  await expect(feed.getByRole("link", { name: /api \/ auth/i })).toBeVisible();
+  await expect(feed.getByText("DevLinks Demo").first()).toBeVisible();
+
+  await feed.getByRole("link", { name: /css layout/i }).click();
+  await expect(page).toHaveURL(/\/public\/collections\/css-layout$/);
+  await expect(page.getByRole("heading", { level: 1, name: "CSS Layout" })).toBeVisible();
+});
+
+test("the explore page searches public collections and keeps the query in the URL", async ({ page }) => {
+  await mockSupabase(page, { session: null });
+  await page.goto("/explore");
+
+  await expect(page.locator(".feed-row")).toHaveCount(3);
+  await page.getByLabel("Search public collections").fill("flexbox");
+  await expect(page).toHaveURL(/q=flexbox/);
+  await expect(page.locator(".feed-row")).toHaveCount(1);
+  await expect(page.getByRole("link", { name: /css layout/i })).toBeVisible();
+
+  await page.getByLabel("Search public collections").fill("nothing-matches-this");
+  await expect(page.getByText(/nothing matches/i)).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByLabel("Search public collections")).toHaveValue("nothing-matches-this");
+});
+
+// ─── Roadmaps ─────────────────────────────────────────────────────────────────
+
+const stepTitles = (page: import("@playwright/test").Page) =>
+  page.locator(".rm-row .rm-title a").allInnerTexts();
+
+test("a collection can be switched to a roadmap", async ({ page }) => {
+  await mockSupabase(page, { session: authenticatedSession, seed: { withBookmarks: true } });
+  await page.goto("/app");
+  await expect(page.locator(".bm-card")).toHaveCount(10);
+
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await page.getByRole("switch", { name: "Roadmap" }).click();
+  await page.getByRole("button", { name: /save changes/i }).click();
+
+  await expect(page.getByText(/roadmap · 10 steps/i)).toBeVisible();
+  await expect(page.locator(".rm-row")).toHaveCount(10);
+  await expect(page.locator(".rm-step").first()).toHaveText("1");
+  const mutations = await readMutations(page);
+  expect(mutations).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ table: "collections", type: "update", payload: expect.objectContaining({ is_roadmap: true }) }),
+    ]),
+  );
+});
+
+test("roadmap steps can be reordered by button, keyboard, and drag", async ({ page }) => {
+  await mockSupabase(page, { session: authenticatedSession, seed: { withBookmarks: true, roadmap: true } });
+  await page.goto("/app");
+  await expect(page.locator(".rm-row")).toHaveCount(10);
+  const before = await stepTitles(page);
+
+  // Button: move step 1 down.
+  await page.getByRole("button", { name: `Move ${before[0]} down` }).click();
+  expect((await stepTitles(page)).slice(0, 2)).toEqual([before[1], before[0]]);
+
+  // Keyboard: focus step 3's handle and press ArrowUp twice; focus follows it.
+  const handle = page.getByRole("button", { name: `Reorder step 3: ${before[2]}` });
+  await handle.focus();
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("ArrowUp");
+  expect((await stepTitles(page))[0]).toBe(before[2]);
+  await expect(page.getByRole("button", { name: `Reorder step 1: ${before[2]}` })).toBeFocused();
+
+  // The batched save sends the full new order once.
+  await expect
+    .poll(async () => (await readMutations(page)).filter((m) => m.type === "reorder").length)
+    .toBe(1);
+  const reorder = (await readMutations(page)).find((m) => m.type === "reorder") as { payload: { ids: string[] } };
+  expect(reorder.payload.ids.slice(0, 3)).toEqual(["bm-3", "bm-2", "bm-1"]);
+
+  // Drag: last step onto the first row.
+  const titles = await stepTitles(page);
+  const last = titles[titles.length - 1];
+  // Synthetic mouse drags are throttled unpredictably in headless Chromium, so
+  // replay the event sequence a browser sends, sharing one DataTransfer.
+  const grip = page.getByRole("button", { name: `Reorder step 10: ${last}` });
+  await grip.dispatchEvent("pointerdown");
+  await page.evaluate(() => {
+    const rows = document.querySelectorAll<HTMLElement>(".rm-row");
+    const source = rows[rows.length - 1];
+    const target = rows[0];
+    const rect = target.getBoundingClientRect();
+    const dataTransfer = new DataTransfer();
+    const fire = (el: HTMLElement, type: string) =>
+      el.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer, clientX: rect.left + 40, clientY: rect.top + 4 }));
+    fire(source, "dragstart");
+    fire(target, "dragover");
+    fire(target, "drop");
+    fire(source, "dragend");
   });
+  await expect.poll(async () => (await stepTitles(page))[0]).toBe(last);
+  await expect
+    .poll(async () => (await readMutations(page)).filter((m) => m.type === "reorder").length)
+    .toBe(2);
 
-  expect(profileUpserts).toHaveLength(1);
-  expect(profileUpserts[0]).toMatchObject({
-    table: "profiles",
-    payload: {
-      id: authenticatedSession.user.id,
-      email: authenticatedSession.user.email,
-      display_name: authenticatedSession.user.user_metadata.full_name,
-    },
+  // A cancelled drag (Escape / released outside the list) puts the order back.
+  const beforeCancel = await stepTitles(page);
+  await page.locator(".rm-handle").nth(2).dispatchEvent("pointerdown");
+  await page.evaluate(() => {
+    const rows = document.querySelectorAll<HTMLElement>(".rm-row");
+    const rect = rows[0].getBoundingClientRect();
+    const dataTransfer = new DataTransfer();
+    const fire = (el: HTMLElement, type: string) =>
+      el.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer, clientX: rect.left + 40, clientY: rect.top + 4 }));
+    fire(rows[2], "dragstart");
+    fire(rows[0], "dragover");
+    fire(rows[2], "dragend"); // no drop: released outside the list
   });
+  await expect.poll(() => stepTitles(page)).toEqual(beforeCancel);
+});
 
-  await page.getByRole("button", { name: /sign out/i }).click();
+test("readers follow a public roadmap and their progress is remembered", async ({ page }) => {
+  await mockSupabase(page, { session: null, seed: { roadmap: true } });
+  await page.goto("/public/collections/react-debugging");
 
-  await expect(page).toHaveURL(/\/\?redirectTo=%2Fapp$/);
-  await expect(
-    page.getByRole("button", { name: /sign in with github/i }),
-  ).toBeVisible();
+  await expect(page.getByText("Roadmap", { exact: true })).toBeVisible();
+  await expect(page.locator(".path-step")).toHaveCount(8);
+  await expect(page.locator(".path-step").first()).toHaveClass(/is-next/);
+
+  await page.locator(".path-step").first().getByRole("button", { name: "Mark as done" }).click();
+  await expect(page.getByText("1 of 8 steps done")).toBeVisible();
+  await expect(page.locator(".path-step").nth(1)).toHaveClass(/is-next/);
+  await expect(page.getByRole("button", { name: "Continue with step 2" })).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByText("1 of 8 steps done")).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: /step 1, .*: done/i })).toBeChecked();
+
+  await page.getByRole("button", { name: "Reset" }).click();
+  await expect(page.getByText("8 steps, in order.")).toBeVisible();
 });

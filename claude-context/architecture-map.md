@@ -12,7 +12,9 @@
 
 - `src/routes/HomePage.tsx`: landing page and GitHub sign-in CTA
 - `src/routes/DashboardPage.tsx`: authenticated workspace
-- `src/routes/PublicCollectionPage.tsx`: public shared collection page
+- `src/routes/PublicCollectionPage.tsx`: public shared collection page (numbered path when `isRoadmap`)
+- `src/routes/ExplorePage.tsx`: `/explore`, every public collection with search + sort
+- `src/routes/ProfilePage.tsx`: `/profile` editor
 - `src/routes/AboutPage.tsx`: "why I built this" static page
 - `src/routes/PrivacyPage.tsx`: privacy policy static page
 - `src/features/auth/ProtectedRoute.tsx`: redirect unauthenticated users to `/?redirectTo=...`
@@ -36,7 +38,7 @@
 
 ## UI/component ownership
 
-- `src/components/layout/RootLayout.tsx`: outer layout
+- `src/components/layout/RootLayout.tsx`: bare `<Outlet />`
 - `src/components/layout/AppShell.tsx`: dashboard shell, sidebar, mobile drawer
 - `src/components/dashboard/`
   - `CollectionSheet.tsx`: right-side drawer that wraps CollectionEditor; opened on demand (sidebar `+`, per-row pencil, header button) — never mounted permanently
@@ -74,3 +76,14 @@
 - `src/seed/demoData.ts`: seed source of truth
 - `supabase/seed.sql`: local reset seed
 - `scripts/seed-demo.ts`: idempotent admin seed for a live Supabase project
+
+## Design system (2026-09-30 redesign)
+
+- Tokens + primitives: `src/styles.css` (light/dark via `prefers-color-scheme`, pinned by `html[data-theme]`; one vermilion accent; radius rule 6/8/12/16px). App surfaces: `src/styles/app.css`. Marketing: `src/styles/marketing.css`.
+- Shared UI: `src/components/ui/` (`Dialog`/`Sheet` own focus trap, Escape, scroll lock; `Logo`, `Favicon`, `ThemeSwitch`, `BrandIcons`). Theme store: `src/lib/theme.ts`.
+- Marketing shell: `src/components/site/SiteLayout.tsx` + `SignInButton.tsx` (one CTA label everywhere).
+- Save/edit bookmark dialogs share `BookmarkFields.tsx` + `bookmarkDraft.ts`.
+- Landing hero runs the real rules client-side: `canonicalizeUrl` (`src/features/bookmarks/canonicalUrl.ts`) + `src/server/taggingRules.ts`.
+- E2E: `tests/support/mockSupabase.ts` is an in-memory Supabase stand-in (enforces 23505 unique URL and 23503 non-empty collection delete).
+- Roadmaps: `supabase/migrations/20260930_000001_roadmap_order.sql` adds `collections.is_roadmap`, `bookmarks.position` (backfilled oldest-first; trigger appends on insert and on collection move) and `reorder_bookmarks(collection, ids[])` (security invoker, rejects stale/foreign id lists). Author view: `src/components/dashboard/RoadmapEditor.tsx` (drag via grip, arrow keys, up/down buttons; batched save through `useReorderBookmarksMutation`, optimistic). Reader view: `src/components/public/RoadmapPath.tsx` (numbered steps, per-reader progress in localStorage only). Ordering helpers: `src/lib/roadmap.ts`.
+- Public feed: `getPublicFeed` in `src/features/public/publicApi.ts` (one query: public collections + curator profile + embedded bookmark domains, mapped by the pure `mapFeedRow`). Rendered by `src/components/public/CollectionFeed.tsx` on the landing page (`#explore`, latest 6) and at `/explore` (`src/routes/ExplorePage.tsx`, search + sort synced to `?q=` / `?sort=links`).

@@ -1,52 +1,155 @@
-import { useEffect, useRef, useState, type PropsWithChildren } from "react";
-import { BookOpen, ExternalLink, LogOut, Menu, Search, UserPen, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type PropsWithChildren } from "react";
+import {
+  ArrowUpRight,
+  ChevronRight,
+  ChevronsUpDown,
+  Compass,
+  LogOut,
+  Menu,
+  Search,
+  UserRound,
+  X,
+} from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAppSelector } from "@/app/hooks";
 import { CollectionsSidebar } from "@/components/dashboard/CollectionsSidebar";
-import { useGetAllPublicCollectionsQuery } from "@/features/public/publicApi";
-import { useFocusTrap } from "@/lib/useFocusTrap";
+import { Logo } from "@/components/ui/Logo";
+import { ThemeSwitch } from "@/components/ui/ThemeSwitch";
 import { selectCurrentProfile, selectCurrentUser } from "@/features/auth/authSlice";
 import { useAuthActions } from "@/features/auth/useAuthActions";
+import { useGetAllPublicCollectionsQuery } from "@/features/public/publicApi";
 import type { Collection } from "@/lib/types";
+import { useDismiss } from "@/lib/useDismiss";
+import { useFocusTrap } from "@/lib/useFocusTrap";
+import { cn } from "@/lib/utils";
 
-// ─── Public collections section ───────────────────────────────────────────────
+const isApplePlatform =
+  typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent);
 
-function PublicCollectionsSection() {
+// ─── Explore (public collections across DevLinks) ─────────────────────────────
+
+function ExploreSection({ onNavigate }: { onNavigate: () => void }) {
   const { data: collections = [], isLoading, isError } = useGetAllPublicCollectionsQuery();
 
   return (
-    <div className="dl-sidebar-section">
-      <div className="dl-sidebar-label">
-        <span>Public</span>
+    <nav className="side-section" aria-label="Explore public collections">
+      <div className="side-label">
+        <span>Explore</span>
+        <Link to="/explore" className="icon-btn icon-btn-sm" aria-label="Browse all public collections" title="Browse all" onClick={onNavigate}>
+          <Compass size={14} strokeWidth={1.75} />
+        </Link>
       </div>
       {isLoading ? (
-        <div className="dl-nav-btn" style={{ color: "var(--fg-4)", fontSize: 12 }}>
-          Loading…
-        </div>
+        <div className="side-item side-item-muted">Loading…</div>
       ) : isError ? (
-        <div className="dl-nav-btn" style={{ color: "var(--danger)", fontSize: 12 }}>
-          Could not load
-        </div>
+        <div className="side-item side-item-muted">Public collections are unavailable right now.</div>
       ) : collections.length === 0 ? (
-        <div className="dl-nav-btn" style={{ color: "var(--fg-4)", fontSize: 12 }}>
-          No public collections yet
-        </div>
+        <div className="side-item side-item-muted">No public collections yet</div>
       ) : (
         collections.map((c) => (
           <Link
             key={c.id}
             to={`/public/collections/${c.slug}`}
-            className="dl-nav-btn"
-            style={{ textDecoration: "none" }}
+            className="side-item"
+            onClick={onNavigate}
           >
-            <BookOpen size={13} style={{ color: "var(--fg-3)", flexShrink: 0 }} />
-            <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {c.name}
-            </span>
-            <ExternalLink size={11} style={{ color: "var(--fg-4)", flexShrink: 0 }} />
+            <span className="side-item-label">{c.name}</span>
+            <ArrowUpRight size={14} strokeWidth={1.75} aria-hidden="true" />
           </Link>
         ))
       )}
+    </nav>
+  );
+}
+
+// ─── User menu ────────────────────────────────────────────────────────────────
+
+function UserMenu() {
+  const user = useAppSelector(selectCurrentUser);
+  const profile = useAppSelector(selectCurrentProfile);
+  const { errorMessage, isWorking, signOut } = useAuthActions();
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useDismiss(containerRef, open, close);
+
+  // Prefer stored profile fields; fall back to OAuth metadata.
+  const displayName: string =
+    profile?.displayName ??
+    user?.user_metadata?.full_name ??
+    user?.user_metadata?.name ??
+    user?.email ??
+    "Account";
+  const handle: string =
+    profile?.githubUsername ??
+    user?.user_metadata?.user_name ??
+    user?.user_metadata?.preferred_username ??
+    user?.email?.split("@")[0] ??
+    "";
+  const avatarUrl = profile?.avatarUrl ?? user?.user_metadata?.avatar_url ?? null;
+  const initials = displayName
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((s) => s[0]?.toUpperCase() ?? "")
+    .join("");
+
+  return (
+    <div ref={containerRef} className="side-foot">
+      {open ? (
+        <div className="menu anim-menu" role="menu" aria-label="Account">
+          <div className="menu-label" translate="no">
+            {user?.email}
+          </div>
+          <Link to="/profile" className="menu-item" role="menuitem" onClick={close}>
+            <UserRound size={15} strokeWidth={1.75} />
+            Edit profile
+          </Link>
+          <div className="menu-theme-row">
+            <span>Theme</span>
+            <ThemeSwitch />
+          </div>
+          <div className="menu-sep" />
+          <button
+            type="button"
+            className="menu-item"
+            role="menuitem"
+            disabled={isWorking}
+            onClick={() => {
+              close();
+              void signOut();
+            }}
+          >
+            <LogOut size={15} strokeWidth={1.75} />
+            {isWorking ? "Signing out…" : "Sign out"}
+          </button>
+          {errorMessage ? (
+            <p className="field-error" role="alert" style={{ padding: "4px 9px 6px" }}>
+              {errorMessage}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      <button
+        type="button"
+        className="user-button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="avatar">
+          {avatarUrl ? <img src={avatarUrl} alt="" width={24} height={24} /> : initials || "?"}
+        </span>
+        <span className="user-button-text">
+          <span className="user-button-name">{displayName}</span>
+          {handle ? (
+            <span className="user-button-handle" translate="no">
+              @{handle}
+            </span>
+          ) : null}
+        </span>
+        <ChevronsUpDown size={14} strokeWidth={1.75} aria-hidden="true" />
+      </button>
     </div>
   );
 }
@@ -54,6 +157,7 @@ function PublicCollectionsSection() {
 // ─── Shell ────────────────────────────────────────────────────────────────────
 
 type AppShellProps = PropsWithChildren<{
+  collectionCounts: Record<string, number>;
   collections: Collection[];
   isCollectionsLoading: boolean;
   onCreateCollection: () => void;
@@ -66,6 +170,7 @@ type AppShellProps = PropsWithChildren<{
 
 export function AppShell({
   children,
+  collectionCounts,
   collections,
   isCollectionsLoading,
   onCreateCollection,
@@ -75,254 +180,177 @@ export function AppShell({
   query,
   setQuery,
 }: AppShellProps) {
-  const user = useAppSelector(selectCurrentUser);
-  const profile = useAppSelector(selectCurrentProfile);
-  const { errorMessage, isWorking, signOut } = useAuthActions();
-
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const sidebarRef = useRef<HTMLElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
-  const userChipRef = useRef<HTMLButtonElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  const sidebarOpenRef = useRef(sidebarOpen);
+  sidebarOpenRef.current = sidebarOpen;
 
   useFocusTrap(sidebarRef, sidebarOpen);
 
-  // Escape closes drawer or user menu
+  // No-op on desktop, where the sidebar is never "open"; on mobile it returns
+  // focus to the button that opened the drawer.
+  const closeSidebar = useCallback(() => {
+    if (!sidebarOpenRef.current) return;
+    setSidebarOpen(false);
+    menuButtonRef.current?.focus();
+  }, []);
+
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        if (sidebarOpen) {
-          setSidebarOpen(false);
-          menuButtonRef.current?.focus();
-        }
-        if (userMenuOpen) setUserMenuOpen(false);
-      }
-      // Cmd+K / Ctrl+K focuses topbar search
+      if (e.key === "Escape" && sidebarOpen) closeSidebar();
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        document.querySelector<HTMLInputElement>(".dl-topbar-search input")?.focus();
+        setMobileSearchOpen(true);
+        searchRef.current?.focus();
+        searchRef.current?.select();
       }
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [sidebarOpen, userMenuOpen]);
+  }, [sidebarOpen, closeSidebar]);
 
-  // Move initial focus into drawer when it opens
+  // Move focus into the drawer when it opens on mobile.
   useEffect(() => {
-    if (!sidebarOpen || !sidebarRef.current) return;
-    const first = sidebarRef.current.querySelector<HTMLElement>("a[href], button:not([disabled])");
-    first?.focus();
+    if (!sidebarOpen) return;
+    sidebarRef.current?.querySelector<HTMLElement>("a[href], button:not([disabled])")?.focus();
   }, [sidebarOpen]);
 
-  // Close user menu when clicking outside
   useEffect(() => {
-    if (!userMenuOpen) return;
-    function onOutside(e: MouseEvent) {
-      if (userChipRef.current && !userChipRef.current.parentElement?.contains(e.target as Node)) {
-        setUserMenuOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", onOutside);
-    return () => document.removeEventListener("mousedown", onOutside);
-  }, [userMenuOpen]);
+    if (mobileSearchOpen) searchRef.current?.focus();
+  }, [mobileSearchOpen]);
 
-  function closeSidebar() {
-    setSidebarOpen(false);
-    menuButtonRef.current?.focus();
-  }
-
-  // Prefer stored profile fields; fall back to OAuth metadata
-  const displayName =
-    profile?.displayName ??
-    user?.user_metadata?.full_name ??
-    user?.user_metadata?.name ??
-    user?.email ??
-    "User";
-  const handle =
-    profile?.githubUsername ??
-    user?.user_metadata?.preferred_username ??
-    user?.email?.split("@")[0] ??
-    "user";
-  const avatarUrl = profile?.avatarUrl ?? null;
-  const initials = displayName
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((s: string) => s[0]?.toUpperCase() ?? "")
-    .join("");
-
-  // Derive current collection label for breadcrumb
-  const currentCollLabel = selectedCollectionId
-    ? (collections.find((c) => c.id === selectedCollectionId)?.name ?? "collection")
-    : "all";
+  const currentCollection = collections.find((c) => c.id === selectedCollectionId) ?? null;
 
   return (
-    <div className="dl-app" data-accent="violet">
+    <div className="app">
+      <a className="skip-link" href="#main">
+        Skip to content
+      </a>
 
-      {/* ── Sidebar ───────────────────────────────────────────────── */}
-      <aside
-        ref={sidebarRef}
-        className={`dl-sidebar${sidebarOpen ? " open" : ""}`}
-        aria-label="Navigation"
-      >
-        {/* Head: logo + user chip */}
-        <div className="dl-sidebar-head">
-          <Link to="/" className="dl-logo" onClick={closeSidebar}>
-            <span className="dl-logo-mark" />
-            <span>dev<em>links</em></span>
+      <aside ref={sidebarRef} className={cn("side", sidebarOpen && "is-open")} aria-label="Sidebar">
+        <div className="side-head">
+          <Link to="/" aria-label="DevLinks home">
+            <Logo />
           </Link>
-
-          <div style={{ position: "relative" }}>
-            <button
-              ref={userChipRef}
-              className="dl-user-chip"
-              onClick={() => setUserMenuOpen((o) => !o)}
-              aria-expanded={userMenuOpen}
-              aria-label="User menu"
-            >
-              <span className="dl-user-avatar">
-                {avatarUrl ? (
-                  <img src={avatarUrl} alt={displayName} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} />
-                ) : (
-                  initials || "U"
-                )}
-              </span>
-              <span>@{handle}</span>
+          {sidebarOpen ? (
+            <button type="button" className="icon-btn" onClick={closeSidebar} aria-label="Close navigation">
+              <X size={16} strokeWidth={1.75} />
             </button>
-
-            {userMenuOpen && (
-              <div className="dl-user-menu">
-                <div style={{ padding: "6px 10px 8px", fontFamily: "var(--mono)", fontSize: 11, color: "var(--fg-3)", borderBottom: "1px solid var(--line-soft)", marginBottom: 4 }}>
-                  {user?.email}
-                </div>
-                <Link
-                  to="/profile"
-                  onClick={() => setUserMenuOpen(false)}
-                  className="dl-nav-btn"
-                  style={{ textDecoration: "none", borderRadius: 6, margin: "2px 0" }}
-                >
-                  <UserPen size={13} style={{ color: "var(--fg-3)" }} />
-                  Edit profile
-                </Link>
-                <button
-                  className="danger"
-                  onClick={() => {
-                    setUserMenuOpen(false);
-                    void signOut();
-                  }}
-                  disabled={isWorking}
-                >
-                  <LogOut size={13} />
-                  {isWorking ? "Signing out…" : "Log out"}
-                </button>
-                {errorMessage ? (
-                  <div style={{ padding: "4px 10px", fontSize: 11, color: "var(--danger)", fontFamily: "var(--mono)" }}>
-                    {errorMessage}
-                  </div>
-                ) : null}
-              </div>
-            )}
-          </div>
+          ) : null}
         </div>
 
-        {/* Nav sections */}
-        <CollectionsSidebar
-          collections={collections}
-          isLoading={isCollectionsLoading}
-          onCreateCollection={() => {
-            onCreateCollection();
-            if (sidebarOpen) closeSidebar();
-          }}
-          onEditCollection={(collection) => {
-            onEditCollection(collection);
-            if (sidebarOpen) closeSidebar();
-          }}
-          onSelectCollection={(id) => {
-            onSelectCollection(id);
-            if (sidebarOpen) closeSidebar();
-          }}
-          selectedCollectionId={selectedCollectionId}
-        />
-
-        <PublicCollectionsSection />
-
-        {/* Footer */}
-        <div className="dl-sidebar-foot">
-          <span>v0.4.0</span>
-          <span>
-            <span className="dl-kbd">?</span> shortcuts
-          </span>
+        <div className="side-scroll">
+          <CollectionsSidebar
+            collectionCounts={collectionCounts}
+            collections={collections}
+            isLoading={isCollectionsLoading}
+            onCreateCollection={() => {
+              closeSidebar();
+              onCreateCollection();
+            }}
+            onEditCollection={(collection) => {
+              closeSidebar();
+              onEditCollection(collection);
+            }}
+            onSelectCollection={(id) => {
+              closeSidebar();
+              onSelectCollection(id);
+            }}
+            selectedCollectionId={selectedCollectionId}
+          />
+          <ExploreSection onNavigate={closeSidebar} />
         </div>
+
+        <UserMenu />
       </aside>
 
-      {/* ── Mobile backdrop ───────────────────────────────────────── */}
-      <div
-        className={`dl-sidebar-backdrop${sidebarOpen ? " open" : ""}`}
-        role="presentation"
-        onClick={closeSidebar}
-      />
+      <div className={cn("side-scrim", sidebarOpen && "is-open")} onClick={closeSidebar} aria-hidden="true" />
 
-      {/* ── Main ─────────────────────────────────────────────────── */}
-      <div className="dl-main">
+      <div className="main">
+        <div className="main-scroll">
+          <header className="topbar">
+            <button
+              ref={menuButtonRef}
+              type="button"
+              className="icon-btn topbar-menu"
+              onClick={() => setSidebarOpen(true)}
+              aria-label="Open navigation"
+              aria-expanded={sidebarOpen}
+            >
+              <Menu size={18} strokeWidth={1.75} />
+            </button>
 
-        {/* Mobile header */}
-        <div className="dl-mobile-header">
-          <button
-            ref={menuButtonRef}
-            className="dl-icon-btn"
-            onClick={() => setSidebarOpen(true)}
-            aria-label="Open navigation"
-            aria-expanded={sidebarOpen}
-          >
-            <Menu size={18} />
-          </button>
-          <Link to="/" className="dl-logo" style={{ fontSize: 13 }}>
-            <span className="dl-logo-mark" style={{ width: 22, height: 22, fontSize: 11 }} />
-            <span>dev<em>links</em></span>
-          </Link>
-          <button className="dl-icon-btn" aria-label="Search">
-            <Search size={16} />
-          </button>
-        </div>
+            <div className="topbar-crumbs">
+              <span>Collections</span>
+              {currentCollection ? (
+                <>
+                  <ChevronRight size={14} strokeWidth={1.75} aria-hidden="true" />
+                  <strong>{currentCollection.name}</strong>
+                </>
+              ) : null}
+            </div>
 
-        {/* Topbar */}
-        <div className="dl-topbar">
-          <div className="dl-breadcrumb">
-            <span className="dl-breadcrumb-dot" />
-            <span>devlinks</span>
-            <span className="sep">/</span>
-            <span>{handle}</span>
-            <span className="sep">/</span>
-            <span className="current">{currentCollLabel}</span>
-          </div>
+            <div className={cn("search", mobileSearchOpen && "is-open")} role="search">
+              <Search className="search-icon" size={15} strokeWidth={1.75} aria-hidden="true" />
+              <input
+                ref={searchRef}
+                className="input"
+                type="search"
+                name="q"
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="Search titles, URLs, tags…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    if (query) setQuery("");
+                    else e.currentTarget.blur();
+                  }
+                }}
+                onBlur={() => {
+                  if (!query) setMobileSearchOpen(false);
+                }}
+                aria-label="Search bookmarks"
+              />
+              <div className="search-end">
+                {query ? (
+                  <button
+                    type="button"
+                    className="icon-btn icon-btn-sm"
+                    onClick={() => {
+                      setQuery("");
+                      searchRef.current?.focus();
+                    }}
+                    aria-label="Clear search"
+                  >
+                    <X size={14} strokeWidth={1.75} />
+                  </button>
+                ) : (
+                  <span className="kbd" aria-hidden="true">
+                    {isApplePlatform ? "⌘ K" : "Ctrl K"}
+                  </span>
+                )}
+              </div>
+            </div>
 
-          <div className="dl-topbar-search">
-            <span className="dl-topbar-search-icon">
-              <Search size={13} />
-            </span>
-            <input
-              type="text"
-              placeholder="Search bookmarks, tags, domains…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
+            <button
+              type="button"
+              className="icon-btn topbar-search-toggle"
+              onClick={() => setMobileSearchOpen(true)}
               aria-label="Search bookmarks"
-            />
-            <span className="dl-topbar-kbd">⌘K</span>
-            {query ? (
-              <button
-                type="button"
-                style={{ position: "absolute", right: 32, top: "50%", transform: "translateY(-50%)", background: "none", border: 0, color: "var(--fg-3)", display: "flex", cursor: "pointer", padding: 2 }}
-                onClick={() => setQuery("")}
-                aria-label="Clear search"
-              >
-                <X size={11} />
-              </button>
-            ) : null}
-          </div>
-        </div>
+            >
+              <Search size={17} strokeWidth={1.75} />
+            </button>
+          </header>
 
-        {/* Page content */}
-        <div className="dl-page">
-          {children}
+          <main id="main" className="page" tabIndex={-1}>
+            {children}
+          </main>
         </div>
       </div>
     </div>

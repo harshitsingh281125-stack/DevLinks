@@ -3,6 +3,7 @@ import { RootLayout } from "@/components/layout/RootLayout";
 import { ProtectedRoute } from "@/features/auth/ProtectedRoute";
 import { AboutPage } from "@/routes/AboutPage";
 import { DashboardPage } from "@/routes/DashboardPage";
+import { ExplorePage } from "@/routes/ExplorePage";
 import { HomePage } from "@/routes/HomePage";
 import { NotFoundPage } from "@/routes/NotFoundPage";
 import { PrivacyPage } from "@/routes/PrivacyPage";
@@ -38,6 +39,10 @@ export const router = createBrowserRouter([
       {
         path: "public/collections/:slug",
         element: <PublicCollectionPage />,
+      },
+      {
+        path: "explore",
+        element: <ExplorePage />,
       },
       {
         path: "about",

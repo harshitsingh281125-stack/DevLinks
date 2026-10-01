@@ -9,13 +9,16 @@ It is built for the common developer workflow of collecting docs, repos, article
 - Sign in with GitHub via Supabase Auth
 - Create private collections for different topics
 - Paste a URL and fetch preview metadata before saving
-- Auto-suggest resource type and topic tags
+- Auto-suggest resource type and topic tags, starting with the tags the page itself declares
 - Prevent duplicate saves with normalized URL matching per user
 - Search bookmarks by text, tag, collection, and resource type
 - Publish selected collections as public read-only share pages
+- Browse every public collection in a feed on the landing page and at `/explore`
+- Turn a collection into a roadmap: drag links into a study order that readers follow step by step
 - Edit your public profile (display name, bio, location, website, GitHub, Twitter/X, LinkedIn, avatar)
 - Author profile shown on public collection pages
 - Export bookmarks to JSON or Markdown
+- Light and dark themes (follows the OS, with a manual override)
 
 ## Core product flows
 
@@ -27,7 +30,7 @@ From the dashboard, paste a URL and DevLinks will:
 - fetch page metadata through `POST /api/metadata`
 - extract title, description, favicon, image, and domain
 - infer `resource_type`
-- infer suggested tags
+- suggest tags: first the ones the page declares (`article:tag` meta, JSON-LD `keywords`, dev.to's "Tagged with", GitHub repo topics, `rel="tag"` links, filtered `<meta keywords>`), then rule-based tags from the title and description
 
 The user can then review and edit the bookmark before saving it.
 
@@ -54,6 +57,8 @@ Any collection can be published to a public route:
 
 Only collections marked `is_public = true` and their linked bookmarks are visible on public pages. Public pages display the author's profile card (avatar, name, bio, location, and social links) sourced from the owner's profile.
 
+Every public collection also appears in a feed, newest activity first: the six latest on the landing page, and all of them at `/explore` with search and sorting (synced to `?q=` and `?sort=links`).
+
 ### 5. Profile
 
 Users can set up a public profile at `/profile`:
@@ -66,7 +71,13 @@ Profile setup is optional and skippable. A banner on the dashboard prompts first
 
 ### 6. Export
 
-Bookmarks can be exported from the dashboard collection header as JSON or Markdown — per collection or all bookmarks at once.
+Bookmarks can be exported from the dashboard collection header as JSON or Markdown — per collection or all bookmarks at once. Roadmap collections export in step order.
+
+### 7. Roadmaps
+
+Any collection can be switched to a roadmap in its settings. The author then sees numbered steps and sets their order by dragging a step's grip, using the arrow keys on a focused grip, or the move up/down buttons. The order is saved in one request through the `reorder_bookmarks` database function.
+
+On the public page, a roadmap renders as a numbered path. Readers can mark steps as done and jump to the next one; that progress is stored in their own browser (`localStorage`) and never sent to the server.
 
 ## Current status
 
@@ -79,7 +90,7 @@ Implemented:
 - Collection CRUD
 - Bookmark CRUD
 - Metadata preview endpoint
-- Deterministic tagging/resource classification
+- Deterministic tagging/resource classification, led by page-declared tags
 - Duplicate detection
 - Full-text search and filters
 - Public collection pages with author profile card
@@ -88,11 +99,19 @@ Implemented:
 - Demo seed data for 3 launch-ready public collections
 - Bookmark export (JSON + Markdown, per-collection and all)
 - About and Privacy pages
+- Public collection feed (landing page + `/explore`)
+- Roadmap collections with drag/keyboard reordering and reader progress
+- Redesigned UI: one token-based design system, light/dark themes
 
 Not completed yet:
 
 - Production deployment verification
 - Final MVP QA/security pass
+
+Known limitations:
+
+- Duplicate detection strips the query string, so every `youtube.com/watch?v=…` link canonicalizes to `youtube.com/watch` and a second YouTube video is reported as a duplicate. Fixing it needs a change to `normalize_bookmark_url` in a new migration.
+- Sites that block bots (for example Medium) return no metadata, so only URL-based tags are suggested.
 
 ## Demo public collections
 
@@ -111,6 +130,7 @@ The seed data includes three public collections:
 - Redux Toolkit + RTK Query
 - Supabase Auth + Database + RLS
 - Vercel serverless function for metadata fetch
+- Geist and Geist Mono (self-hosted via Fontsource)
 - Vitest and Playwright
 
 ## Project structure
@@ -124,11 +144,12 @@ src/components/       Layout, dashboard, and public UI components
 src/features/         Feature slices: auth, bookmarks, collections, profile, public
 src/lib/              Shared types, env, analytics, SEO, utilities
 src/routes/           Route-level pages
-src/server/           Metadata fetch/parsing and tagging rules
+src/server/           Metadata fetch/parsing, page tag extraction, and tagging rules
+src/styles/           App and marketing stylesheets (tokens live in src/styles.css)
 src/seed/             Seed data source of truth
 supabase/migrations/  Schema, helpers, indexes, RLS, and storage bucket policies
 supabase/seed.sql     Local/demo seed
-tests/                Playwright tests
+tests/                Playwright tests (tests/support/mockSupabase.ts is an in-memory Supabase stand-in)
 ```
 
 ## Local setup
@@ -171,6 +192,7 @@ Database migrations live in:
 - `supabase/migrations/20260413_000002_helpers_and_indexes.sql`
 - `supabase/migrations/20260413_000003_rls_policies.sql`
 - `supabase/migrations/20260503_000001_profile_fields_and_storage.sql` — adds bio/location/website/twitter/linkedin columns, `avatars` storage bucket, and public profile read policy
+- `supabase/migrations/20260930_000001_roadmap_order.sql` — adds `collections.is_roadmap`, `bookmarks.position` (backfilled oldest-first), the append-on-insert/move trigger, and the `reorder_bookmarks` function
 
 Important data rules:
 
@@ -180,6 +202,8 @@ Important data rules:
 - Public reads are allowed only for public collections and their bookmarks
 - Profile rows are publicly readable only when the user has at least one public collection (for author display on public pages)
 - Avatar images are stored in the `avatars` bucket (public bucket, path-scoped to user ID)
+- Bookmark `position` is 1-based within its collection; new links and links moved in from another collection are appended by trigger
+- `reorder_bookmarks(collection_id, ids[])` runs as the caller (RLS applies) and rejects any id list that isn't exactly the caller's bookmarks in that collection
 
 ## Metadata endpoint
 
@@ -193,14 +217,17 @@ It is responsible for:
 - redirect handling
 - timeout handling
 - blocking localhost/private-network targets
-- metadata extraction
-- deterministic tag and resource-type inference
+- metadata extraction (quote-aware `<meta>` parsing, HTML entity decoding)
+- tag suggestion: page-declared tags first, normalized to one vocabulary (`React.js` → `react`, `golang` → `go`), then keyword rules; capped at eight
+- deterministic resource-type inference
 
 Main implementation files:
 
 - `api/metadata.ts`
 - `src/server/metadata.ts`
-- `src/server/taggingRules.ts`
+- `src/server/html.ts` — meta / JSON-LD parsing helpers
+- `src/server/pageTags.ts` — publisher tag extraction, normalization, and merging
+- `src/server/taggingRules.ts` — keyword rules and resource-type inference
 
 ## Seed data
 

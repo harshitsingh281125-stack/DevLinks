@@ -1,5 +1,10 @@
-import { Copy, ExternalLink, Pencil, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Check, Copy, ExternalLink, Pencil, Trash2 } from "lucide-react";
+import { Favicon } from "@/components/ui/Favicon";
+import { formatSavedDate } from "@/lib/format";
+import { resourceTypeLabel } from "@/lib/resourceTypes";
 import type { Bookmark } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 type BookmarkCardProps = {
   activeTag?: string | null;
@@ -10,7 +15,7 @@ type BookmarkCardProps = {
   fresh?: boolean;
 };
 
-const MAX_VISIBLE_TAGS = 5;
+const MAX_VISIBLE_TAGS = 4;
 
 export function BookmarkCard({
   activeTag,
@@ -20,146 +25,116 @@ export function BookmarkCard({
   onTagClick,
   fresh = false,
 }: BookmarkCardProps) {
+  const [copied, setCopied] = useState(false);
   const visibleTags = bookmark.tags.slice(0, MAX_VISIBLE_TAGS);
   const overflowCount = bookmark.tags.length - MAX_VISIBLE_TAGS;
+  const savedDate = formatSavedDate(bookmark.createdAt);
+  const typeLabel = resourceTypeLabel(bookmark.resourceType);
 
-  // Format "added N days ago" from createdAt
-  const daysAgo = (() => {
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(false), 1600);
+    return () => clearTimeout(t);
+  }, [copied]);
+
+  async function copyUrl() {
     try {
-      const diff = Date.now() - new Date(bookmark.createdAt).getTime();
-      const d = Math.floor(diff / 86_400_000);
-      return d === 0 ? "today" : `${d}d ago`;
+      await navigator.clipboard.writeText(bookmark.url);
+      setCopied(true);
     } catch {
-      return null;
+      // Clipboard can be blocked (permissions, insecure origin); the URL is still one click away.
     }
-  })();
-
-  // Favicon: try real faviconUrl, fall back to first char of domain
-  const faviconLetter = bookmark.domain?.[0]?.toUpperCase() ?? "?";
+  }
 
   return (
-    <article className={`dl-bookmark${fresh ? " fresh" : ""}`}>
-      {/* Top row: favicon + domain/type + action buttons */}
-      <div className="dl-bookmark-top">
-        <div className="dl-favicon">
-          {bookmark.faviconUrl ? (
-            <img
-              src={bookmark.faviconUrl}
-              alt=""
-              onError={(e) => {
-                const img = e.currentTarget as HTMLImageElement;
-                img.style.display = "none";
-                // Show letter fallback by revealing a sibling span
-                const span = img.nextElementSibling as HTMLElement | null;
-                if (span) span.style.display = "block";
-              }}
-            />
-          ) : null}
-          <span style={{ display: bookmark.faviconUrl ? "none" : "block" }}>
-            {faviconLetter}
-          </span>
-        </div>
+    <article className={cn("bm-card", fresh && "is-fresh")}>
+      <div className="bm-top">
+        <Favicon domain={bookmark.domain} src={bookmark.faviconUrl} />
+        <span className="bm-domain" translate="no">
+          {bookmark.domain}
+          {typeLabel ? <span translate="yes"> · {typeLabel}</span> : null}
+        </span>
 
-        <div className="dl-bm-info">
-          <span className="dl-bm-domain">{bookmark.domain}</span>
-          {bookmark.resourceType ? (
-            <span className="dl-bm-type">{bookmark.resourceType}</span>
-          ) : null}
-        </div>
-
-        {/* Action buttons — appear on hover */}
-        <div className="dl-bm-actions">
+        <div className="bm-actions">
           <button
             type="button"
-            className="dl-bm-action-btn"
+            className="icon-btn icon-btn-sm"
             onClick={() => onEdit(bookmark)}
-            aria-label="Edit bookmark"
+            aria-label={`Edit ${bookmark.title}`}
+            title="Edit"
           >
-            <Pencil size={12} />
+            <Pencil size={14} strokeWidth={1.75} />
+          </button>
+          <button
+            type="button"
+            className="icon-btn icon-btn-sm"
+            onClick={() => void copyUrl()}
+            aria-label={copied ? "Link copied" : "Copy link"}
+            title={copied ? "Copied" : "Copy link"}
+          >
+            {copied ? <Check size={14} strokeWidth={2} /> : <Copy size={14} strokeWidth={1.75} />}
           </button>
           <a
             href={bookmark.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="dl-bm-action-btn"
-            aria-label="Open in new tab"
-            onClick={(e) => e.stopPropagation()}
+            className="icon-btn icon-btn-sm"
+            aria-label={`Open ${bookmark.title} in a new tab`}
+            title="Open in new tab"
           >
-            <ExternalLink size={12} />
+            <ExternalLink size={14} strokeWidth={1.75} />
           </a>
           <button
             type="button"
-            className="dl-bm-action-btn"
-            onClick={() => void navigator.clipboard.writeText(bookmark.url)}
-            aria-label="Copy URL"
-          >
-            <Copy size={12} />
-          </button>
-          <button
-            type="button"
-            className="dl-bm-action-btn delete"
+            className="icon-btn icon-btn-sm is-danger"
             onClick={() => onDeleteRequest(bookmark)}
-            aria-label="Delete bookmark"
+            aria-label={`Delete ${bookmark.title}`}
+            title="Delete"
           >
-            <Trash2 size={12} />
+            <Trash2 size={14} strokeWidth={1.75} />
           </button>
         </div>
       </div>
 
-      {/* Title */}
-      <h3>
-        <a
-          href={bookmark.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{ color: "inherit", textDecoration: "none" }}
-        >
+      <h3 className="bm-title">
+        <a href={bookmark.url} target="_blank" rel="noopener noreferrer">
           {bookmark.title}
         </a>
       </h3>
 
-      {/* Description */}
-      {bookmark.description ? <p>{bookmark.description}</p> : null}
+      {bookmark.description ? <p className="bm-desc">{bookmark.description}</p> : null}
 
-      {/* Tags */}
-      {visibleTags.length > 0 ? (
-        <div className="dl-bm-tags">
-          {visibleTags.map((tag) => {
-            const isActive = activeTag === tag;
-            if (onTagClick) {
-              return (
-                <button
-                  key={tag}
-                  type="button"
-                  className={`dl-tag${isActive ? " active" : ""}`}
-                  onClick={() => onTagClick(tag)}
-                  aria-pressed={isActive}
-                  aria-label={`Filter by tag: ${tag}`}
-                >
-                  {tag}
-                </button>
-              );
-            }
-            return (
-              <span key={tag} className="dl-tag">
+      <div className="bm-foot">
+        <div className="bm-tags">
+          {visibleTags.map((tag) =>
+            onTagClick ? (
+              <button
+                key={tag}
+                type="button"
+                className="tag"
+                onClick={() => onTagClick(tag)}
+                aria-pressed={activeTag === tag}
+                title={activeTag === tag ? `Clear the “${tag}” filter` : `Show only “${tag}”`}
+              >
+                {tag}
+              </button>
+            ) : (
+              <span key={tag} className="tag">
                 {tag}
               </span>
-            );
-          })}
+            ),
+          )}
           {overflowCount > 0 ? (
-            <span className="dl-tag" style={{ opacity: 0.6 }}>
+            <span className="tag" title={bookmark.tags.slice(MAX_VISIBLE_TAGS).join(", ")}>
               +{overflowCount}
             </span>
           ) : null}
         </div>
-      ) : null}
-
-      {/* Meta footer */}
-      <div className="dl-bm-meta">
-        {daysAgo ? <span>added {daysAgo}</span> : <span />}
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "55%", textAlign: "right" }}>
-          {bookmark.url.length > 38 ? bookmark.url.slice(0, 38) + "…" : bookmark.url}
-        </span>
+        {savedDate ? (
+          <time className="bm-date" dateTime={bookmark.createdAt}>
+            {savedDate}
+          </time>
+        ) : null}
       </div>
     </article>
   );

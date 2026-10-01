@@ -10,6 +10,13 @@ const PARAM: Record<keyof SearchFilters, string> = {
   resourceType: "type",
 };
 
+// React Router hands functional updaters the params from the render that created
+// them, not the live URL. A debounced search write could then drop a filter set
+// in the meantime, so every update starts from the address bar instead.
+function currentParams() {
+  return new URLSearchParams(window.location.search);
+}
+
 export function useSearchFilters() {
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -25,8 +32,8 @@ export function useSearchFilters() {
   const setFilter = useCallback(
     <K extends keyof SearchFilters>(key: K, value: SearchFilters[K]) => {
       setSearchParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
+        () => {
+          const next = currentParams();
           const param = PARAM[key];
           if (value === null || value === "") {
             next.delete(param);
@@ -44,8 +51,8 @@ export function useSearchFilters() {
   const clearFilter = useCallback(
     (key: keyof SearchFilters) => {
       setSearchParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
+        () => {
+          const next = currentParams();
           next.delete(PARAM[key]);
           return next;
         },
@@ -58,8 +65,8 @@ export function useSearchFilters() {
   // Clears query, tag, and resourceType but preserves the selected collection.
   const resetFilters = useCallback(() => {
     setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
+      () => {
+        const next = currentParams();
         next.delete(PARAM.query);
         next.delete(PARAM.tag);
         next.delete(PARAM.resourceType);

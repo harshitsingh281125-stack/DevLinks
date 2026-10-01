@@ -2,7 +2,7 @@
 // Pure functions — no DOM, no React — so they are fully unit-testable in Node.
 
 export const SITE_NAME = "DevLinks";
-export const DEFAULT_TITLE = "DevLinks — Developer Bookmark Manager";
+export const DEFAULT_TITLE = "DevLinks · Bookmarks for developers";
 export const DEFAULT_DESCRIPTION =
   "Save, organise, and share developer links with DevLinks.";
 
@@ -70,7 +70,7 @@ export function buildPublicCollectionMeta(
     };
   }
 
-  const title = `${collection.name} \u2014 ${SITE_NAME}`;
+  const title = `${collection.name} · ${SITE_NAME}`;
 
   const rawDescription =
     collection.description?.trim() ||

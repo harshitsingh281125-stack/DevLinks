@@ -1,6 +1,8 @@
 import { lookup } from "node:dns/promises";
 import type { IncomingHttpHeaders } from "node:http";
 import type { MetadataPreview, MetadataFetchStatus } from "../lib/types";
+import { decodeHtml, metaContent, parseMetaTags } from "./html";
+import { extractPublisherTags, mergeSuggestedTags } from "./pageTags";
 import { inferResourceType, inferSuggestedTags } from "./taggingRules";
 
 const REQUEST_TIMEOUT_MS = 8_000;
@@ -83,37 +85,6 @@ function parseTitle(html: string) {
 
   return match ? decodeHtml(match[1]).trim() : null;
 }
-
-function parseMetaContent(html: string, attribute: "name" | "property", value: string) {
-  const pattern = new RegExp(
-    `<meta[^>]*${attribute}=["']${escapeRegExp(value)}["'][^>]*content=["']([^"']*)["'][^>]*>`,
-    "i",
-  );
-  const reversePattern = new RegExp(
-    `<meta[^>]*content=["']([^"']*)["'][^>]*${attribute}=["']${escapeRegExp(value)}["'][^>]*>`,
-    "i",
-  );
-
-  const directMatch = html.match(pattern);
-  const reverseMatch = html.match(reversePattern);
-  const content = directMatch?.[1] ?? reverseMatch?.[1] ?? null;
-
-  return content ? decodeHtml(content).trim() : null;
-}
-
-function escapeRegExp(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function decodeHtml(value: string) {
-  return value
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">");
-}
-
 
 function isPrivateIp(ip: string) {
   if (ip === "::1" || ip === "127.0.0.1") {
@@ -256,22 +227,23 @@ export async function fetchMetadataPreview(url: string): Promise<MetadataPreview
   }
 
   const { finalUrl, html, response } = await fetchWithRedirects(validatedUrl.url);
-  const title =
-    parseMetaContent(html, "property", "og:title") ??
-    parseMetaContent(html, "name", "twitter:title") ??
-    parseTitle(html);
+  // Parse <meta> once, quote-aware, so values like "Rust's" aren't cut short.
+  const meta = parseMetaTags(html);
+  const title = metaContent(meta, "og:title") ?? metaContent(meta, "twitter:title") ?? parseTitle(html);
   const description =
-    parseMetaContent(html, "property", "og:description") ??
-    parseMetaContent(html, "name", "description") ??
-    parseMetaContent(html, "name", "twitter:description");
-  const imageUrl =
-    parseMetaContent(html, "property", "og:image") ??
-    parseMetaContent(html, "name", "twitter:image");
+    metaContent(meta, "og:description") ??
+    metaContent(meta, "description") ??
+    metaContent(meta, "twitter:description");
+  const imageUrl = metaContent(meta, "og:image") ?? metaContent(meta, "twitter:image");
   const faviconPath =
     html.match(/<link[^>]*rel=["'][^"']*icon[^"']*["'][^>]*href=["']([^"']+)["'][^>]*>/i)?.[1] ??
     "/favicon.ico";
-  const faviconUrl = faviconPath ? new URL(faviconPath, finalUrl).toString() : null;
-  const suggestedTags = inferSuggestedTags(finalUrl.hostname, finalUrl.pathname, title, description);
+  const faviconUrl = faviconPath ? new URL(decodeHtml(faviconPath), finalUrl).toString() : null;
+  // The page's own tags lead; keyword rules fill in for pages that declare none.
+  const suggestedTags = mergeSuggestedTags(
+    extractPublisherTags(html, finalUrl.hostname),
+    inferSuggestedTags(finalUrl.hostname, finalUrl.pathname, title, description),
+  );
   const resourceType = inferResourceType(finalUrl.hostname, finalUrl.pathname, title, description);
   const fetchStatus: MetadataFetchStatus =
     title && description && imageUrl ? "success" : "partial";

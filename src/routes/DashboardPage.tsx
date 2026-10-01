@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Copy, Download, Globe, Lock } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Check, ChevronDown, Download, FolderPlus, Globe, Info, Link as LinkIcon, Lock, Route, Settings2, TriangleAlert, UserRound, X } from "lucide-react";
+import { Link } from "react-router-dom";
 import { BookmarkList } from "@/components/dashboard/BookmarkList";
 import { CollectionSheet } from "@/components/dashboard/CollectionSheet";
 import { DeleteBookmarkDialog } from "@/components/dashboard/DeleteBookmarkDialog";
@@ -7,7 +8,6 @@ import { EditBookmarkModal, type EditBookmarkFormData } from "@/components/dashb
 import { SaveBookmarkModal, type BookmarkFormData, type SaveBookmarkResult } from "@/components/dashboard/SaveBookmarkModal";
 import { UrlSaveEntry } from "@/components/dashboard/UrlSaveEntry";
 import { AppShell } from "@/components/layout/AppShell";
-import { Link } from "react-router-dom";
 import { useAppSelector } from "@/app/hooks";
 import { selectCurrentProfile, selectCurrentUser } from "@/features/auth/authSlice";
 import {
@@ -15,14 +15,9 @@ import {
   useDeleteBookmarkMutation,
   useGetAllBookmarksQuery,
   useGetBookmarksQuery,
+  useReorderBookmarksMutation,
   useUpdateBookmarkMutation,
 } from "@/features/bookmarks/bookmarksApi";
-import {
-  exportAllJson,
-  exportAllMarkdown,
-  exportCollectionJson,
-  exportCollectionMarkdown,
-} from "@/lib/export";
 import { useSearchFilters } from "@/features/bookmarks/useSearchFilters";
 import {
   useCreateCollectionMutation,
@@ -31,37 +26,38 @@ import {
   useToggleCollectionVisibilityMutation,
   useUpdateCollectionMutation,
 } from "@/features/collections/collectionsApi";
+import { hasFirstBookmarkBeenFired, markFirstBookmarkFired, track } from "@/lib/analytics";
 import {
-  hasFirstBookmarkBeenFired,
-  markFirstBookmarkFired,
-  track,
-} from "@/lib/analytics";
+  exportAllJson,
+  exportAllMarkdown,
+  exportCollectionJson,
+  exportCollectionMarkdown,
+} from "@/lib/export";
+import { formatCount } from "@/lib/format";
+import { RESOURCE_TYPE_LABELS } from "@/lib/resourceTypes";
+import { sortByPosition } from "@/lib/roadmap";
 import type { Bookmark, Collection, MetadataPreview } from "@/lib/types";
-
-const FILTER_PILLS: { label: string; value: string | null }[] = [
-  { label: "All", value: null },
-  { label: "Docs", value: "documentation" },
-  { label: "Repo", value: "repo" },
-  { label: "Article", value: "article" },
-  { label: "Video", value: "video" },
-  { label: "Tool", value: "tool" },
-  { label: "Tutorial", value: "tutorial" },
-  { label: "Package", value: "package" },
-  { label: "Talk", value: "talk" },
-  { label: "Other", value: "other" },
-];
-
-type MutationErrorShape = { message?: string };
+import { RESOURCE_TYPES } from "@/lib/types";
+import { useDismiss } from "@/lib/useDismiss";
 
 function getErrorMessage(error: unknown, fallback: string) {
   if (typeof error === "object" && error !== null && "message" in error) {
-    const candidate = error as MutationErrorShape;
-    if (typeof candidate.message === "string" && candidate.message.length > 0) {
-      return candidate.message;
-    }
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message.length > 0) return message;
   }
   return fallback;
 }
+
+function readBannerDismissed(key: string | null) {
+  if (!key) return true;
+  try {
+    return localStorage.getItem(key) === "1";
+  } catch {
+    return false;
+  }
+}
+
+// ─── Export menu ──────────────────────────────────────────────────────────────
 
 function ExportMenu({
   onExportJson,
@@ -72,104 +68,90 @@ function ExportMenu({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
+  const close = useCallback(() => setOpen(false), []);
+  useDismiss(ref, open, close);
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
       <button
         type="button"
-        className="dl-btn"
+        className="btn btn-secondary"
         onClick={() => setOpen((v) => !v)}
-        aria-haspopup="true"
+        aria-haspopup="menu"
         aria-expanded={open}
       >
-        <Download size={12} /> Export
+        <Download size={14} strokeWidth={1.75} aria-hidden="true" />
+        Export
+        <ChevronDown size={13} strokeWidth={1.75} aria-hidden="true" />
       </button>
-      {open && (
-        <div
-          style={{
-            position: "absolute",
-            right: 0,
-            top: "calc(100% + 6px)",
-            background: "var(--bg-2)",
-            border: "1px solid var(--line)",
-            borderRadius: 7,
-            padding: 4,
-            minWidth: 150,
-            zIndex: 50,
-            boxShadow: "0 8px 24px oklch(0 0 0 / 0.4)",
-          }}
-        >
+      {open ? (
+        <div className="menu anim-menu" role="menu">
           {[
-            { label: "Export as JSON", action: onExportJson },
-            { label: "Export as Markdown", action: onExportMarkdown },
-          ].map(({ label, action }) => (
+            { label: "Markdown", meta: ".md", action: onExportMarkdown },
+            { label: "JSON", meta: ".json", action: onExportJson },
+          ].map(({ label, meta, action }) => (
             <button
               key={label}
               type="button"
-              style={{
-                display: "block",
-                width: "100%",
-                textAlign: "left",
-                padding: "7px 12px",
-                background: "transparent",
-                border: "none",
-                borderRadius: 5,
-                fontSize: 12.5,
-                fontFamily: "var(--mono)",
-                color: "var(--fg-1)",
-                cursor: "pointer",
+              role="menuitem"
+              className="menu-item"
+              onClick={() => {
+                action();
+                close();
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-3)")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-              onClick={() => { action(); setOpen(false); }}
             >
               {label}
+              <span className="menu-item-meta">{meta}</span>
             </button>
           ))}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
 
-function Toast({ msg, onDone }: { msg: string; onDone: () => void }) {
+// ─── Toast ────────────────────────────────────────────────────────────────────
+
+type ToastState = { message: string; tone: "ok" | "error" } | null;
+
+function Toast({ toast, onDone }: { toast: NonNullable<ToastState>; onDone: () => void }) {
   useEffect(() => {
-    const t = setTimeout(onDone, 2400);
+    const t = setTimeout(onDone, toast.tone === "error" ? 5000 : 2600);
     return () => clearTimeout(t);
-  }, [onDone]);
+  }, [toast, onDone]);
+
   return (
-    <div className="dl-toast" role="status">
-      <span className="dl-toast-ok">✓</span>
-      <span>{msg}</span>
+    <div className="toast anim-toast" role={toast.tone === "error" ? "alert" : "status"}>
+      {toast.tone === "error" ? (
+        <TriangleAlert size={15} strokeWidth={2} />
+      ) : (
+        <Check size={15} strokeWidth={2.25} />
+      )}
+      <span>{toast.message}</span>
     </div>
   );
 }
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function DashboardPage() {
   const user = useAppSelector(selectCurrentUser);
   const profile = useAppSelector(selectCurrentProfile);
   const { filters, setFilter, clearFilter, resetFilters } = useSearchFilters();
+  const saveBarRef = useRef<HTMLInputElement>(null);
 
-  // Show a "complete your profile" banner for users who haven't filled it in yet.
-  // Dismissed state is stored in localStorage so it persists across refreshes.
+  // "Complete your profile" callout, dismissible per user.
   const profileBannerKey = user ? `devlinks:profile-banner-dismissed:${user.id}` : null;
-  const [bannerDismissed, setBannerDismissed] = useState(
-    () => (profileBannerKey ? localStorage.getItem(profileBannerKey) === "1" : true),
-  );
+  const [bannerDismissed, setBannerDismissed] = useState(() => readBannerDismissed(profileBannerKey));
   const profileIncomplete = !profile?.bio && !profile?.displayName && !profile?.websiteUrl;
   const showProfileBanner = !bannerDismissed && profileIncomplete;
 
   function dismissBanner() {
-    if (profileBannerKey) localStorage.setItem(profileBannerKey, "1");
+    try {
+      if (profileBannerKey) localStorage.setItem(profileBannerKey, "1");
+    } catch {
+      // Dismissal just won't persist across visits.
+    }
     setBannerDismissed(true);
   }
 
@@ -181,9 +163,9 @@ export function DashboardPage() {
   const [editingBookmark, setEditingBookmark] = useState<Bookmark | null>(null);
   const [pendingDeleteBookmark, setPendingDeleteBookmark] = useState<Bookmark | null>(null);
   const [freshId, setFreshId] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<ToastState>(null);
+  const clearToast = useCallback(() => setToast(null), []);
 
-  // Collection sheet
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetMode, setSheetMode] = useState<"create" | "edit">("create");
   const [sheetCollection, setSheetCollection] = useState<Collection | null>(null);
@@ -195,6 +177,7 @@ export function DashboardPage() {
   }, [filters.query]);
 
   useEffect(() => {
+    if (draftQuery === filters.query) return;
     const id = setTimeout(() => {
       setFilter("query", draftQuery);
       if (draftQuery.trim().length > 0) {
@@ -202,7 +185,7 @@ export function DashboardPage() {
       }
     }, 300);
     return () => clearTimeout(id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftQuery]);
 
   const {
@@ -219,6 +202,7 @@ export function DashboardPage() {
   const [createBookmark, createBookmarkState] = useCreateBookmarkMutation();
   const [updateBookmark, updateBookmarkState] = useUpdateBookmarkMutation();
   const [deleteBookmark] = useDeleteBookmarkMutation();
+  const [reorderBookmarks] = useReorderBookmarksMutation();
 
   const {
     currentData: bookmarks = [],
@@ -229,12 +213,19 @@ export function DashboardPage() {
     { skip: !user?.id || !selectedCollectionId },
   );
 
-  const { currentData: allBookmarks = [] } = useGetAllBookmarksQuery(
-    user?.id ?? "",
-    { skip: !user?.id },
-  );
+  const { currentData: allBookmarks = [] } = useGetAllBookmarksQuery(user?.id ?? "", {
+    skip: !user?.id,
+  });
+
+  // Set when we select a collection we just created, until the refetched list includes it.
+  const pendingSelectIdRef = useRef<string | null>(null);
 
   useEffect(() => {
+    const pending = pendingSelectIdRef.current;
+    if (pending) {
+      if (!collections.some((c) => c.id === pending)) return;
+      pendingSelectIdRef.current = null;
+    }
     if (collections.length === 0) {
       clearFilter("collectionId");
       return;
@@ -243,7 +234,7 @@ export function DashboardPage() {
     if (!selectedStillExists) {
       setFilter("collectionId", collections[0]?.id ?? null);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [collections, selectedCollectionId]);
 
   const selectedCollection = useMemo(
@@ -257,6 +248,22 @@ export function DashboardPage() {
   }, [selectedCollectionId]);
 
   const activeFilterCount = [filters.query, filters.tag, filters.resourceType].filter(Boolean).length;
+
+  // Roadmap collections list links in the author's order and number them by
+  // their place in the whole collection, even when a filter hides some.
+  const isRoadmap = selectedCollection?.isRoadmap ?? false;
+  const visibleBookmarks = useMemo(
+    () => (isRoadmap ? sortByPosition(bookmarks) : bookmarks),
+    [bookmarks, isRoadmap],
+  );
+  const stepNumbers = useMemo(() => {
+    const steps = new Map<string, number>();
+    if (!isRoadmap || !selectedCollectionId) return steps;
+    sortByPosition(allBookmarks.filter((b) => b.collectionId === selectedCollectionId)).forEach((b, i) =>
+      steps.set(b.id, i + 1),
+    );
+    return steps;
+  }, [allBookmarks, isRoadmap, selectedCollectionId]);
 
   // ─── Sheet helpers ──────────────────────────────────────────────────────────
 
@@ -274,7 +281,7 @@ export function DashboardPage() {
     setSheetOpen(true);
   }
 
-  // ─── Handlers ──────────────────────────────────────────────────────────────
+  // ─── Handlers ───────────────────────────────────────────────────────────────
 
   function handlePreviewReady(preview: MetadataPreview) {
     setMetadataPreview(preview);
@@ -306,11 +313,12 @@ export function DashboardPage() {
       markFirstBookmarkFired();
     }
 
+    const savedTo = collections.find((c) => c.id === data.collectionId)?.name ?? "your collection";
     setFreshId(result.bookmark.id);
-    setTimeout(() => setFreshId(null), 1500);
+    setTimeout(() => setFreshId(null), 1700);
     setSaveModalOpen(false);
     setMetadataPreview(null);
-    setToast(`Saved to ${selectedCollection?.name ?? "collection"}`);
+    setToast({ message: `Saved to ${savedTo}`, tone: "ok" });
     return {};
   }
 
@@ -332,6 +340,7 @@ export function DashboardPage() {
       tags: data.tags,
     }).unwrap();
     setEditingBookmark(null);
+    setToast({ message: "Changes saved", tone: "ok" });
   }
 
   async function handleBookmarkDeleteConfirm() {
@@ -345,35 +354,34 @@ export function DashboardPage() {
         collectionId: target.collectionId,
         filters,
       }).unwrap();
+      setToast({ message: "Bookmark deleted", tone: "ok" });
     } catch (error) {
-      setCollectionError(getErrorMessage(error, "Bookmark could not be deleted."));
+      setToast({ message: getErrorMessage(error, "The bookmark couldn’t be deleted."), tone: "error" });
     }
   }
 
-  async function handleCreateCollection(input: { description: string; name: string }) {
-    if (!user?.id) {
-      setCollectionError("You must be signed in to create a collection.");
-      return;
-    }
+  // Create / update / delete throw on failure so the sheet can show the reason inline.
+  async function handleCreateCollection(input: { description: string; name: string; isRoadmap: boolean }) {
+    if (!user?.id) throw new Error("Your session expired. Sign in again to create a collection.");
     const created = await createCollection({
       userId: user.id,
       name: input.name,
       description: input.description || null,
+      isRoadmap: input.isRoadmap,
     }).unwrap();
+    pendingSelectIdRef.current = created.id;
     setFilter("collectionId", created.id);
     setCollectionError(null);
   }
 
-  async function handleUpdateCollection(input: { description: string; id: string; name: string }) {
-    if (!user?.id) {
-      setCollectionError("You must be signed in to update a collection.");
-      return;
-    }
+  async function handleUpdateCollection(input: { description: string; id: string; name: string; isRoadmap: boolean }) {
+    if (!user?.id) throw new Error("Your session expired. Sign in again to edit this collection.");
     const updated = await updateCollection({
       id: input.id,
       userId: user.id,
       name: input.name,
       description: input.description || null,
+      isRoadmap: input.isRoadmap,
     }).unwrap();
     setFilter("collectionId", updated.id);
     setCollectionError(null);
@@ -391,25 +399,34 @@ export function DashboardPage() {
       track({ name: "public_toggle", props: { collectionId: input.id, isPublic: input.isPublic } });
       setCollectionError(null);
     } catch (error) {
-      setCollectionError(getErrorMessage(error, "Could not update collection visibility."));
+      setCollectionError(getErrorMessage(error, "Visibility couldn’t be changed. Try again in a moment."));
+      throw error;
     }
   }
 
   async function handleDeleteCollection(collectionId: string) {
-    if (!user?.id) {
-      setCollectionError("You must be signed in to delete a collection.");
-      return;
-    }
+    if (!user?.id) throw new Error("Your session expired. Sign in again to delete this collection.");
+    await deleteCollection({ id: collectionId, userId: user.id }).unwrap();
+    setCollectionError(null);
+    if (selectedCollectionId === collectionId) clearFilter("collectionId");
+    setToast({ message: "Collection deleted", tone: "ok" });
+  }
+
+  async function handleReorder(orderedIds: string[]) {
+    if (!user?.id || !selectedCollectionId) return;
     try {
-      await deleteCollection({ id: collectionId, userId: user.id }).unwrap();
-      setCollectionError(null);
-      if (selectedCollectionId === collectionId) {
-        clearFilter("collectionId");
-      }
+      await reorderBookmarks({ collectionId: selectedCollectionId, orderedIds, filters, userId: user.id }).unwrap();
     } catch (error) {
-      setCollectionError(
-        getErrorMessage(error, "Collection deletion failed. Non-empty collections cannot be removed."),
-      );
+      setToast({ message: getErrorMessage(error, "The new order couldn’t be saved."), tone: "error" });
+    }
+  }
+
+  async function copyPublicLink(slug: string) {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/public/collections/${slug}`);
+      setToast({ message: "Public link copied", tone: "ok" });
+    } catch {
+      setToast({ message: "Clipboard access was blocked by the browser.", tone: "error" });
     }
   }
 
@@ -426,43 +443,56 @@ export function DashboardPage() {
           : "idle";
 
   const collectionsLoadMessage = collectionsError
-    ? getErrorMessage(collectionsError, "Collections could not be loaded.")
+    ? getErrorMessage(collectionsError, "Collections couldn’t be loaded.")
     : null;
 
+  const collectionCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    allBookmarks.forEach((b) => {
+      counts[b.collectionId] = (counts[b.collectionId] ?? 0) + 1;
+    });
+    return counts;
+  }, [allBookmarks]);
+
   const scopeTags = useMemo(() => {
-    if (bookmarks.length === 0) return [];
-    const set = new Map<string, number>();
-    bookmarks.forEach((b) => b.tags.forEach((t) => set.set(t, (set.get(t) ?? 0) + 1)));
-    return Array.from(set.entries())
+    const counts = new Map<string, number>();
+    bookmarks.forEach((b) => b.tags.forEach((t) => counts.set(t, (counts.get(t) ?? 0) + 1)));
+    return Array.from(counts.entries())
       .sort((a, b) => b[1] - a[1])
       .slice(0, 10)
       .map(([t]) => t);
   }, [bookmarks]);
 
   const typeCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: bookmarks.length };
-    FILTER_PILLS.forEach(({ value }) => {
-      if (value) counts[value] = bookmarks.filter((b) => b.resourceType === value).length;
+    const counts: Record<string, number> = {};
+    bookmarks.forEach((b) => {
+      if (b.resourceType) counts[b.resourceType] = (counts[b.resourceType] ?? 0) + 1;
     });
     return counts;
   }, [bookmarks]);
+
+  // Only offer types that exist in the current view (plus the active one).
+  const visibleTypes = RESOURCE_TYPES.filter(
+    (type) => (typeCounts[type] ?? 0) > 0 || filters.resourceType === type,
+  );
 
   function toggleTagFilter(tag: string) {
     if (filters.tag === tag) clearFilter("tag");
     else setFilter("tag", tag);
   }
 
-  const DOT_PALETTE = [
-    "oklch(0.68 0.17 40)", "oklch(0.72 0.16 280)", "oklch(0.78 0.15 200)",
-    "oklch(0.75 0.14 90)", "oklch(0.70 0.12 320)", "oklch(0.73 0.14 160)", "oklch(0.65 0.15 60)",
-  ];
-  const selectedCollIdx = collections.findIndex((c) => c.id === selectedCollectionId);
-  const collDot = selectedCollIdx >= 0 ? DOT_PALETTE[selectedCollIdx % DOT_PALETTE.length] : "var(--accent)";
+  function resetAllFilters() {
+    setDraftQuery("");
+    resetFilters();
+  }
 
-  // ─── Render ──────────────────────────────────────────────────────────────────
+  const hasNoCollections = !isCollectionsLoading && collections.length === 0 && !collectionsError;
+
+  // ─── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <AppShell
+      collectionCounts={collectionCounts}
       collections={collections}
       isCollectionsLoading={isCollectionsLoading || isCollectionsFetching}
       onCreateCollection={openCreateSheet}
@@ -475,224 +505,231 @@ export function DashboardPage() {
       query={draftQuery}
       setQuery={setDraftQuery}
     >
-      {/* ── Complete-your-profile banner ───────────────────────────── */}
-      {showProfileBanner && (
-        <div style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
-          padding: "10px 16px", margin: "0 0 2px",
-          background: "oklch(0.30 0.06 230 / 0.55)",
-          borderBottom: "1px solid var(--line-soft)",
-          fontFamily: "var(--sans)", fontSize: 13, color: "var(--fg-1)",
-        }}>
-          <span>Complete your profile — visitors of your public collections will see your name and bio.</span>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-            <Link
-              to="/profile"
-              style={{
-                padding: "4px 12px", borderRadius: 20, fontSize: 12, fontWeight: 600,
-                background: "var(--accent)", color: "var(--accent-ink)", textDecoration: "none",
-              }}
-            >
-              Set up profile
-            </Link>
-            <button
-              onClick={dismissBanner}
-              style={{ background: "none", border: 0, color: "var(--fg-3)", cursor: "pointer", fontSize: 18, lineHeight: 1, padding: "0 2px" }}
-              aria-label="Dismiss"
-            >
-              ×
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── Collection header ─────────────────────────────────────── */}
-      <div className="dl-collection-head">
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <h1
-            className="dl-collection-title"
-            style={{ "--dot": collDot } as React.CSSProperties}
-          >
-            <span className="dl-collection-title-dot" />
-            {selectedCollection ? selectedCollection.name : "All bookmarks"}
-          </h1>
-          <p className="dl-collection-desc">
-            {selectedCollection?.description?.trim() ||
-              (selectedCollection ? "No description yet." : "Everything saved across collections.")}
+      {showProfileBanner ? (
+        <div className="callout">
+          <UserRound size={16} strokeWidth={1.75} aria-hidden="true" />
+          <p className="callout-text" style={{ margin: 0 }}>
+            <strong>Add a name and bio.</strong> People who open your public collections will see them.
           </p>
-          <div className="dl-collection-meta">
-            <span className="dl-collection-meta-item">
-              📁 {bookmarks.length} bookmark{bookmarks.length !== 1 ? "s" : ""}
-            </span>
-            {selectedCollection?.isPublic ? (
-              <>
-                <span className="dl-pub-badge">
-                  <Globe size={9} /> public
-                </span>
-                {selectedCollection.slug ? (
-                  <span className="dl-collection-meta-item" style={{ color: "var(--fg-3)" }}>
-                    devlinks.dev/c/{selectedCollection.slug}
-                  </span>
-                ) : null}
-              </>
-            ) : selectedCollection ? (
-              <span className="dl-collection-meta-item">
-                <Lock size={11} /> private
-              </span>
-            ) : null}
+          <Link to="/profile" className="btn btn-secondary btn-sm">
+            Set up profile
+          </Link>
+          <button type="button" className="icon-btn icon-btn-sm" onClick={dismissBanner} aria-label="Dismiss">
+            <X size={14} strokeWidth={1.75} />
+          </button>
+        </div>
+      ) : null}
+
+      {collectionsLoadMessage ? (
+        <div className="notice notice-danger" role="alert" style={{ marginBottom: 20 }}>
+          <TriangleAlert size={15} strokeWidth={1.75} />
+          <div className="notice-body">
+            <p className="notice-title">Collections didn’t load</p>
+            <p className="notice-text">{collectionsLoadMessage}</p>
           </div>
         </div>
+      ) : null}
 
-        <div className="dl-head-actions">
-          {selectedCollection?.isPublic && selectedCollection.slug ? (
-            <button
-              type="button"
-              className="dl-btn"
-              onClick={() => void navigator.clipboard.writeText(`${window.location.origin}/public/collections/${selectedCollection.slug}`)}
-            >
-              <Copy size={12} /> Copy link
-            </button>
-          ) : null}
-          <ExportMenu
-            onExportJson={() => {
-              if (selectedCollection) {
-                exportCollectionJson(bookmarks, selectedCollection);
-              } else {
-                exportAllJson(allBookmarks, collections);
-              }
-            }}
-            onExportMarkdown={() => {
-              if (selectedCollection) {
-                exportCollectionMarkdown(bookmarks, selectedCollection);
-              } else {
-                exportAllMarkdown(allBookmarks, collections);
-              }
-            }}
-          />
-          {selectedCollection ? (
-            <button
-              type="button"
-              className="dl-btn"
-              onClick={() => openEditSheet(selectedCollection)}
-            >
-              Edit collection
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="dl-btn primary"
-              onClick={openCreateSheet}
-            >
+      {hasNoCollections ? (
+        <div className="empty" style={{ marginTop: 24 }}>
+          <span className="empty-icon">
+            <FolderPlus size={18} strokeWidth={1.75} />
+          </span>
+          <h1 className="empty-title">Start with a collection</h1>
+          <p className="empty-text">
+            Collections hold related links, like “React debugging” or “Auth reading list”. They stay
+            private until you choose to share one.
+          </p>
+          <div className="empty-actions">
+            <button type="button" className="btn btn-primary" onClick={openCreateSheet}>
               New collection
             </button>
-          )}
+          </div>
         </div>
-      </div>
+      ) : (
+        <>
+          <div className="page-head">
+            <div className="page-head-text">
+              {selectedCollection ? (
+                <h1 className="page-title">{selectedCollection.name}</h1>
+              ) : (
+                <span className="skeleton" style={{ width: 220, height: 26 }} aria-hidden="true" />
+              )}
+              {selectedCollection ? (
+                <p className={selectedCollection.description?.trim() ? "page-desc" : "page-desc is-empty"}>
+                  {selectedCollection.description?.trim() || "No description yet."}
+                </p>
+              ) : null}
+              {selectedCollection ? (
+                <div className="page-meta">
+                  {selectedCollection.isRoadmap ? (
+                    <span className="page-meta-item" style={{ color: "var(--fg-2)" }}>
+                      <Route size={13} strokeWidth={1.75} aria-hidden="true" />
+                      Roadmap · {formatCount(collectionCounts[selectedCollection.id] ?? bookmarks.length, "step")}
+                    </span>
+                  ) : (
+                    <span className="page-meta-item">
+                      {formatCount(collectionCounts[selectedCollection.id] ?? bookmarks.length, "bookmark")}
+                    </span>
+                  )}
+                  {selectedCollection.isPublic ? (
+                    <>
+                      <span className="page-meta-item" style={{ color: "var(--accent-text)" }}>
+                        <Globe size={13} strokeWidth={1.75} aria-hidden="true" /> Public
+                      </span>
+                      {selectedCollection.slug ? (
+                        <a
+                          className="page-meta-item"
+                          href={`/public/collections/${selectedCollection.slug}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          translate="no"
+                        >
+                          /public/collections/{selectedCollection.slug}
+                        </a>
+                      ) : null}
+                    </>
+                  ) : (
+                    <span className="page-meta-item">
+                      <Lock size={12} strokeWidth={1.75} aria-hidden="true" /> Private
+                    </span>
+                  )}
+                </div>
+              ) : null}
+            </div>
 
-      {/* ── URL save bar ──────────────────────────────────────────── */}
-      <UrlSaveEntry
-        activeCollection={selectedCollection}
-        onPreviewReady={handlePreviewReady}
-        onOpenSaveModal={() => setSaveModalOpen(true)}
-        preview={metadataPreview}
-      />
-
-      {/* ── Toolbar: type + tag filters ───────────────────────────── */}
-      <div className="dl-toolbar">
-        <span className="dl-toolbar-label">Type</span>
-        <div className="dl-filter-group">
-          {FILTER_PILLS.map(({ label, value }) => {
-            const isActive = filters.resourceType === value;
-            const count = typeCounts[value ?? "all"] ?? 0;
-            return (
-              <button
-                key={label}
-                type="button"
-                className={`dl-filter-chip${isActive ? " active" : ""}${count === 0 && value !== null ? " muted" : ""}`}
-                onClick={() =>
-                  isActive ? clearFilter("resourceType") : setFilter("resourceType", value)
-                }
-                aria-pressed={isActive}
-              >
-                {label}
-                <span className="dl-chip-count">{count}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        {scopeTags.length > 0 ? (
-          <>
-            <span className="dl-toolbar-label" style={{ marginLeft: 6 }}>Tags</span>
-            <div className="dl-tag-filter">
-              {scopeTags.map((t) => (
+            <div className="page-actions">
+              {selectedCollection?.isPublic && selectedCollection.slug ? (
                 <button
-                  key={t}
                   type="button"
-                  className={`dl-tag-chip${filters.tag === t ? " active" : ""}`}
-                  onClick={() => toggleTagFilter(t)}
-                  aria-pressed={filters.tag === t}
+                  className="btn btn-secondary"
+                  onClick={() => void copyPublicLink(selectedCollection.slug!)}
                 >
-                  {t}
+                  <LinkIcon size={14} strokeWidth={1.75} aria-hidden="true" />
+                  Copy link
                 </button>
-              ))}
-              {filters.tag && !scopeTags.includes(filters.tag) ? (
+              ) : null}
+              <ExportMenu
+                onExportJson={() => {
+                  if (selectedCollection) exportCollectionJson(visibleBookmarks, selectedCollection);
+                  else exportAllJson(allBookmarks, collections);
+                }}
+                onExportMarkdown={() => {
+                  if (selectedCollection) exportCollectionMarkdown(visibleBookmarks, selectedCollection);
+                  else exportAllMarkdown(allBookmarks, collections);
+                }}
+              />
+              {selectedCollection ? (
                 <button
                   type="button"
-                  className="dl-tag-chip active"
-                  onClick={() => clearFilter("tag")}
+                  className="btn btn-secondary"
+                  onClick={() => openEditSheet(selectedCollection)}
                 >
-                  {filters.tag}
-                  <span className="dl-tag-chip-remove">×</span>
+                  <Settings2 size={14} strokeWidth={1.75} aria-hidden="true" />
+                  Edit
                 </button>
               ) : null}
             </div>
-          </>
-        ) : null}
+          </div>
 
-        <div className="dl-toolbar-right">
-          {activeFilterCount > 0 ? (
-            <button
-              type="button"
-              className="dl-btn danger"
-              style={{ padding: "3px 10px", fontSize: 11.5 }}
-              onClick={() => {
-                setDraftQuery("");
-                resetFilters();
-              }}
-            >
-              Reset
-            </button>
+          <UrlSaveEntry ref={saveBarRef} activeCollection={selectedCollection} onPreviewReady={handlePreviewReady} />
+
+          {bookmarks.length > 0 || activeFilterCount > 0 ? (
+            <div className="filters">
+              <div className="seg" role="group" aria-label="Filter by type">
+                <button
+                  type="button"
+                  className="seg-item"
+                  aria-pressed={!filters.resourceType}
+                  onClick={() => clearFilter("resourceType")}
+                >
+                  All
+                </button>
+                {visibleTypes.map((type) => {
+                  const isActive = filters.resourceType === type;
+                  return (
+                    <button
+                      key={type}
+                      type="button"
+                      className="seg-item"
+                      aria-pressed={isActive}
+                      onClick={() => (isActive ? clearFilter("resourceType") : setFilter("resourceType", type))}
+                    >
+                      {RESOURCE_TYPE_LABELS[type]}
+                      <span className="seg-count">{typeCounts[type] ?? 0}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {scopeTags.length > 0 || filters.tag ? (
+                <div className="filters-tags" role="group" aria-label="Filter by tag">
+                  {scopeTags.map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      className="tag"
+                      aria-pressed={filters.tag === t}
+                      onClick={() => toggleTagFilter(t)}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                  {filters.tag && !scopeTags.includes(filters.tag) ? (
+                    <button type="button" className="tag" aria-pressed="true" onClick={() => clearFilter("tag")}>
+                      {filters.tag}
+                      <X size={11} strokeWidth={2} aria-hidden="true" />
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+
+              <div className="filters-end">
+                <span aria-live="polite">{formatCount(bookmarks.length, "result")}</span>
+                {activeFilterCount > 0 ? (
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={resetAllFilters}>
+                    Clear filters
+                  </button>
+                ) : null}
+              </div>
+            </div>
           ) : null}
-          <span className="dl-result-count">
-            <em>{bookmarks.length}</em> bookmark{bookmarks.length !== 1 ? "s" : ""}
-          </span>
-        </div>
-      </div>
 
-      {/* ── Bookmark list — full width ─────────────────────────────── */}
-      <BookmarkList
-        activeTag={filters.tag}
-        bookmarks={bookmarks}
-        hasActiveFilters={activeFilterCount > 0}
-        isError={isBookmarksError}
-        isLoading={isBookmarksLoading}
-        onDeleteRequest={setPendingDeleteBookmark}
-        onEdit={setEditingBookmark}
-        onResetFilters={() => {
-          setDraftQuery("");
-          resetFilters();
-        }}
-        onTagClick={(tag) => toggleTagFilter(tag)}
-        freshId={freshId}
-      />
+          {isRoadmap && visibleBookmarks.length > 1 ? (
+            <p className="roadmap-hint">
+              <Info size={13} strokeWidth={1.75} aria-hidden="true" />
+              {activeFilterCount > 0
+                ? "Showing part of the roadmap. Clear filters to reorder steps."
+                : "Drag the handles, or use the arrows, to set the order readers follow."}
+            </p>
+          ) : null}
 
-      {/* ── Collection sheet ──────────────────────────────────────── */}
+          <BookmarkList
+            activeTag={filters.tag}
+            bookmarks={visibleBookmarks}
+            roadmap={
+              isRoadmap
+                ? { canReorder: activeFilterCount === 0, stepNumbers, onReorder: (ids) => void handleReorder(ids) }
+                : undefined
+            }
+            hasActiveFilters={activeFilterCount > 0}
+            isError={isBookmarksError}
+            isLoading={isBookmarksLoading || (isCollectionsLoading && !selectedCollection)}
+            onDeleteRequest={setPendingDeleteBookmark}
+            onEdit={setEditingBookmark}
+            onFocusSaveBar={() => saveBarRef.current?.focus()}
+            onResetFilters={resetAllFilters}
+            onTagClick={toggleTagFilter}
+            freshId={freshId}
+          />
+        </>
+      )}
+
       <CollectionSheet
         activeCollection={sheetCollection ?? selectedCollection}
         busyState={busyState}
         collections={collections}
-        errorMessage={collectionError ?? collectionsLoadMessage}
+        errorMessage={collectionError}
         isOpen={sheetOpen}
         mode={sheetMode}
         onClose={() => setSheetOpen(false)}
@@ -702,7 +739,6 @@ export function DashboardPage() {
         onUpdate={handleUpdateCollection}
       />
 
-      {/* ── Modals ────────────────────────────────────────────────── */}
       {metadataPreview ? (
         <SaveBookmarkModal
           collections={collections}
@@ -720,10 +756,10 @@ export function DashboardPage() {
         <EditBookmarkModal
           bookmark={editingBookmark}
           collections={collections}
-          isOpen={true}
+          isOpen
           isSaving={updateBookmarkState.isLoading}
           onClose={() => setEditingBookmark(null)}
-          onSave={(data) => handleBookmarkEditSave(data)}
+          onSave={handleBookmarkEditSave}
         />
       ) : null}
 
@@ -735,9 +771,7 @@ export function DashboardPage() {
         />
       ) : null}
 
-      {toast ? (
-        <Toast msg={toast} onDone={() => setToast(null)} />
-      ) : null}
+      {toast ? <Toast toast={toast} onDone={clearToast} /> : null}
     </AppShell>
   );
 }

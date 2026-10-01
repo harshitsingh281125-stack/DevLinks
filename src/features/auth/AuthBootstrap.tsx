@@ -12,6 +12,7 @@ import {
   profileSyncStarted,
   profileSyncSucceeded,
 } from "@/features/auth/authSlice";
+import { LogoMark } from "@/components/ui/Logo";
 import { syncProfile } from "@/features/auth/profileBootstrap";
 import { track } from "@/lib/analytics";
 import { supabase } from "@/lib/supabase";
@@ -96,37 +97,28 @@ export function AuthBootstrap({ children }: PropsWithChildren) {
   }, [dispatch, profileSyncStatus, session, user]);
 
   if (!initialized || (session && profileSyncStatus === "syncing")) {
+    // Usually visible for a few hundred milliseconds, so it stays quiet: the
+    // mark alone, with the status for assistive tech.
     return (
-      <div className="flex min-h-screen items-center justify-center bg-ink-950 px-6 text-center text-sand-100">
-        <div className="space-y-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300">
-            DevLinks
-          </p>
-          <h1 className="text-2xl font-semibold text-white">
-            {!initialized ? "Restoring session…" : "Syncing profile…"}
-          </h1>
-          <p className="max-w-sm text-sm text-sand-200/70">
-            {!initialized
-              ? "Supabase auth is initializing before the app routes render."
-              : "Preparing your DevLinks profile before the app routes render."}
-          </p>
-        </div>
+      <div className="boot" role="status">
+        <LogoMark className="boot-mark" />
+        <span className="sr-only">{!initialized ? "Restoring your session…" : "Loading your profile…"}</span>
       </div>
     );
   }
 
   if (session && profileSyncStatus === "failed") {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-ink-950 px-6 text-center text-sand-100">
-        <div className="space-y-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300">
-            DevLinks
-          </p>
-          <h1 className="text-2xl font-semibold text-white">Profile sync failed</h1>
-          <p className="max-w-sm text-sm text-rose-200">
-            {profileSyncError ?? "The profile row could not be created or updated."}
-          </p>
-        </div>
+      <div className="center-state" role="alert" style={{ minHeight: "100dvh" }}>
+        <LogoMark className="boot-mark" />
+        <h1 className="center-state-title">Your profile didn’t load.</h1>
+        <p className="center-state-text">
+          {profileSyncError ?? "The profile row could not be created or updated."} Reload to try again. If it
+          keeps happening, sign out and back in.
+        </p>
+        <button type="button" className="btn btn-primary" onClick={() => window.location.reload()}>
+          Reload
+        </button>
       </div>
     );
   }

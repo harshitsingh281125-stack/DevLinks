@@ -975,3 +975,32 @@ describe("inferResourceType - additional domain coverage", () => {
     });
   });
 });
+
+describe("inferSuggestedTags: web platform and systems vocabulary", () => {
+  const tags = (title: string, description: string | null = null) =>
+    inferSuggestedTags("example.com", "/", title, description);
+
+  it.each([
+    ["HTTP Cookies explained", ["http", "cookies"]],
+    ["Fixing CORS errors in fetch", ["cors"]],
+    ["Preventing XSS and CSRF", ["xss", "csrf"]],
+    ["System Design Primer", ["system-design"]],
+    ["A practical guide to regular expressions", ["regex"]],
+    ["Debugging Node with Chrome DevTools", ["debugging", "devtools"]],
+    ["Understanding the event loop", ["async"]],
+    ["Getting started with GitHub Actions", ["github-actions"]],
+    ["Prompt engineering for LLMs", ["llm"]],
+  ])("%s", (title, expected) => {
+    expect(tags(title)).toEqual(expect.arrayContaining(expected));
+  });
+
+  it("doesn't tag engine algorithms as the algorithms topic", () => {
+    expect(tags("Flexbox guide", "We'll pop the hood on the Flexbox algorithm.")).not.toContain("algorithms");
+    expect(tags("Inside React", "How the diffing algorithm works")).not.toContain("algorithms");
+    expect(tags("Grokking Algorithms")).toContain("algorithms");
+  });
+
+  it("doesn't read URLs inside descriptions as the HTTP topic", () => {
+    expect(tags("Read more", "See https://example.com for details")).not.toContain("http");
+  });
+});

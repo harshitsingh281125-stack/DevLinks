@@ -44,13 +44,16 @@ Read:
 - `src/features/bookmarks/bookmarksApi.ts`
 - `src/routes/DashboardPage.tsx`
 
-## If the task is public pages
+## If the task is public pages or the explore feed
 
 Read:
 
-- `src/features/public/publicApi.ts`
+- `src/features/public/publicApi.ts` (`getPublicFeed` + pure `mapFeedRow`)
 - `src/routes/PublicCollectionPage.tsx`
+- `src/routes/ExplorePage.tsx` (`/explore`, search + sort in the URL)
+- `src/components/public/CollectionFeed.tsx` (also used on the landing page)
 - `src/components/public/PublicBookmarkCard.tsx`
+- `src/components/public/RoadmapPath.tsx` (roadmap reader view)
 - `src/lib/seo.ts`
 - `src/lib/useDocumentHead.ts`
 
@@ -60,8 +63,30 @@ Read:
 
 - `api/metadata.ts`
 - `src/server/metadata.ts`
+- `src/server/html.ts`
+- `src/server/pageTags.ts` — page-declared tags, normalization, merge
 - `src/server/taggingRules.ts`
 - `src/features/bookmarks/metadataApi.ts`
+
+## If the task is roadmaps (ordered collections)
+
+Read:
+
+- `supabase/migrations/20260930_000001_roadmap_order.sql`
+- `src/lib/roadmap.ts` (`sortByPosition`, `moveItem`)
+- `src/components/dashboard/RoadmapEditor.tsx` (author: drag / keyboard / buttons)
+- `src/features/bookmarks/bookmarksApi.ts` (`reorderBookmarks`)
+- `src/components/dashboard/CollectionEditor.tsx` (Roadmap switch)
+- `src/components/public/RoadmapPath.tsx` (reader progress in localStorage)
+
+## If the task is visual design or theming
+
+Read:
+
+- `src/styles.css` (tokens for both themes, primitives, design rules in the header comment)
+- `src/styles/app.css`, `src/styles/marketing.css`
+- `src/components/ui/` (`Dialog`/`Sheet`, `Logo`, `Favicon`, `ThemeSwitch`)
+- `src/lib/theme.ts`
 
 ## If the task is Supabase schema/RLS/search/indexes
 
@@ -70,6 +95,7 @@ Read:
 - `supabase/migrations/20260413_000001_initial_schema.sql`
 - `supabase/migrations/20260413_000002_helpers_and_indexes.sql`
 - `supabase/migrations/20260413_000003_rls_policies.sql`
+- `supabase/migrations/20260930_000001_roadmap_order.sql`
 
 ## If the task is demo data or launch content
 
@@ -102,6 +128,7 @@ Read:
 
 Read:
 
+- `src/components/site/SiteLayout.tsx` (shared header/footer)
 - `src/routes/AboutPage.tsx`
 - `src/routes/PrivacyPage.tsx`
 - `src/app/router.tsx`
@@ -110,8 +137,7 @@ Read:
 
 Read:
 
-- `src/components/layout/RootLayout.tsx`
-- `src/components/layout/AppShell.tsx` — passes `onEditCollection` down to CollectionsSidebar
+- `src/components/layout/AppShell.tsx` — sidebar (collections, Explore, user menu), topbar search, mobile drawer
 - `src/components/dashboard/CollectionsSidebar.tsx` — sidebar nav; pencil icon per row triggers edit sheet
 - `src/components/dashboard/CollectionSheet.tsx` — on-demand right-side drawer for create/edit
 - `src/app/router.tsx`

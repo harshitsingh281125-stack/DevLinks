@@ -112,8 +112,8 @@ describe("buildPublicCollectionMeta with a full collection", () => {
 
   const meta = buildPublicCollectionMeta(collection);
 
-  it("formats title as '{name} — DevLinks'", () => {
-    expect(meta.title).toBe("React Debugging \u2014 DevLinks");
+  it("formats title as '{name} · DevLinks'", () => {
+    expect(meta.title).toBe("React Debugging · DevLinks");
   });
 
   it("uses the collection description", () => {
@@ -260,7 +260,7 @@ describe("buildPublicCollectionMeta — various collection names", () => {
   for (const { name, slug } of cases) {
     it(`formats title correctly for '${name}'`, () => {
       const meta = buildPublicCollectionMeta({ name, description: null, slug });
-      expect(meta.title).toBe(`${name} \u2014 ${SITE_NAME}`);
+      expect(meta.title).toBe(`${name} · ${SITE_NAME}`);
     });
   }
 });

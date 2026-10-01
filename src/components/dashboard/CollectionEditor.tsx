@@ -1,21 +1,27 @@
-import { useEffect, useRef, useState } from "react";
-import { Check, Copy, Globe, Lock, Trash2 } from "lucide-react";
+import { useEffect, useId, useState } from "react";
+import { Check, Copy, ExternalLink } from "lucide-react";
 import { getOrGenerateSlug } from "@/features/collections/slugUtils";
-import { DeleteCollectionDialog } from "./DeleteCollectionDialog";
 import type { Collection } from "@/lib/types";
+import { DeleteCollectionDialog } from "./DeleteCollectionDialog";
 
-type CollectionEditorProps = {
+export type CollectionEditorProps = {
   activeCollection: Collection | null;
   busyState: "idle" | "creating" | "updating" | "deleting" | "toggling";
   collections: Collection[];
   errorMessage: string | null;
   mode: "create" | "edit";
   onClose: () => void;
-  onCreate: (input: { description: string; name: string }) => Promise<void>;
+  onCreate: (input: { description: string; name: string; isRoadmap: boolean }) => Promise<void>;
   onDelete: (collectionId: string) => Promise<void>;
   onTogglePublic: (input: { id: string; isPublic: boolean; slug: string | null }) => Promise<void>;
-  onUpdate: (input: { description: string; id: string; name: string }) => Promise<void>;
+  onUpdate: (input: { description: string; id: string; name: string; isRoadmap: boolean }) => Promise<void>;
 };
+
+function messageOf(error: unknown, fallback: string) {
+  return typeof error === "object" && error !== null && "message" in error
+    ? String((error as { message: unknown }).message)
+    : fallback;
+}
 
 export function CollectionEditor({
   activeCollection,
@@ -29,254 +35,275 @@ export function CollectionEditor({
   onTogglePublic,
   onUpdate,
 }: CollectionEditorProps) {
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [validationMessage, setValidationMessage] = useState<string | null>(null);
-  const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
+  const nameId = useId();
+  const descriptionId = useId();
+  const sharingId = useId();
+  const roadmapId = useId();
+  const editing = mode === "edit" ? activeCollection : null;
+
+  const [name, setName] = useState(editing?.name ?? "");
+  const [description, setDescription] = useState(editing?.description ?? "");
+  const [isRoadmap, setIsRoadmap] = useState(editing?.isRoadmap ?? false);
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(false);
   const [optimisticPublic, setOptimisticPublic] = useState<boolean | null>(null);
-  const nameInputRef = useRef<HTMLInputElement>(null);
 
-  // Populate form when mode or active collection changes
   useEffect(() => {
-    if (mode === "create") {
-      setName("");
-      setDescription("");
-    } else {
-      setName(activeCollection?.name ?? "");
-      setDescription(activeCollection?.description ?? "");
-    }
-    setValidationMessage(null);
-    setDuplicateWarning(null);
-    setOptimisticPublic(null);
-    setTimeout(() => nameInputRef.current?.focus(), 60);
-  }, [mode, activeCollection]);
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(false), 1800);
+    return () => clearTimeout(t);
+  }, [copied]);
 
   const isCreating = busyState === "creating";
   const isUpdating = busyState === "updating";
   const isDeleting = busyState === "deleting";
   const isToggling = busyState === "toggling";
-  const isBusy = isCreating || isUpdating || isDeleting || isToggling;
-  const hasEditableCollection = Boolean(activeCollection);
+  const isBusy = busyState !== "idle";
 
-  const previewSlug = activeCollection ? getOrGenerateSlug(activeCollection) : null;
-  const publicUrl = previewSlug
-    ? `${window.location.origin}/public/collections/${previewSlug}`
-    : null;
+  const trimmedName = name.trim().toLowerCase();
+  const nameClash = trimmedName
+    ? collections.find((c) => c.name.trim().toLowerCase() === trimmedName && c.id !== editing?.id)
+    : undefined;
 
-  async function handleCopyUrl() {
-    if (!publicUrl) return;
-    await navigator.clipboard.writeText(publicUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const isPublic = optimisticPublic ?? editing?.isPublic ?? false;
+  const slug = editing ? getOrGenerateSlug(editing) : null;
+  const publicUrl = slug ? `${window.location.origin}/public/collections/${slug}` : null;
+
+  async function handleSubmit() {
+    const normalizedName = name.trim();
+    if (!normalizedName) {
+      setNameError("Give the collection a name.");
+      return;
+    }
+    setNameError(null);
+    setSubmitError(null);
+
+    try {
+      if (mode === "create") {
+        await onCreate({ name: normalizedName, description: description.trim(), isRoadmap });
+      } else if (editing) {
+        await onUpdate({ id: editing.id, name: normalizedName, description: description.trim(), isRoadmap });
+      }
+      onClose();
+    } catch (error) {
+      setSubmitError(messageOf(error, "The collection couldn’t be saved. Try again in a moment."));
+    }
   }
 
   async function handleTogglePublic() {
-    if (!activeCollection) return;
-    const nextIsPublic = !(optimisticPublic ?? activeCollection.isPublic);
-    setOptimisticPublic(nextIsPublic);
-    const slug = nextIsPublic ? getOrGenerateSlug(activeCollection) : null;
+    if (!editing) return;
+    const next = !isPublic;
+    setOptimisticPublic(next);
     try {
-      await onTogglePublic({ id: activeCollection.id, isPublic: nextIsPublic, slug });
+      await onTogglePublic({ id: editing.id, isPublic: next, slug: next ? getOrGenerateSlug(editing) : null });
     } catch {
       setOptimisticPublic(null);
     }
   }
 
-  function checkDuplicate(val: string) {
-    const lower = val.trim().toLowerCase();
-    const clash = collections.find(
-      (c) => c.name.trim().toLowerCase() === lower && c.id !== activeCollection?.id,
-    );
-    setDuplicateWarning(clash ? `You already have a collection named "${clash.name}".` : null);
+  async function handleCopyUrl() {
+    if (!publicUrl) return;
+    try {
+      await navigator.clipboard.writeText(publicUrl);
+      setCopied(true);
+    } catch {
+      // Clipboard blocked; the URL stays selectable in the field.
+    }
   }
 
-  const handleSubmit = async () => {
-    const normalizedName = name.trim();
-
-    if (!normalizedName) {
-      setValidationMessage("Collection name is required.");
-      return;
-    }
-
-    setValidationMessage(null);
-
-    if (mode === "create") {
-      await onCreate({ name: normalizedName, description: description.trim() });
-      onClose();
-      return;
-    }
-
-    if (!activeCollection) {
-      setValidationMessage("No collection selected.");
-      return;
-    }
-
-    await onUpdate({
-      id: activeCollection.id,
-      name: normalizedName,
-      description: description.trim(),
-    });
-    onClose();
-  };
+  const shownError = submitError ?? errorMessage;
 
   return (
-    <div className="dl-sheet-body">
-      <div className="space-y-4">
-        <div className="dl-sheet-field">
-          <label className="dl-sheet-label" htmlFor="collection-name">
+    <>
+      <form
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault();
+          void handleSubmit();
+        }}
+      >
+        <div className="field">
+          <label className="label" htmlFor={nameId}>
             Collection name
           </label>
           <input
-            ref={nameInputRef}
-            id="collection-name"
+            id={nameId}
+            className="input"
             type="text"
+            name="name"
+            autoComplete="off"
             value={name}
             onChange={(e) => {
               setName(e.target.value);
-              checkDuplicate(e.target.value);
+              if (nameError) setNameError(null);
             }}
-            onKeyDown={(e) => { if (e.key === "Enter") void handleSubmit(); }}
-            placeholder="React Debugging"
-            className="dl-sheet-input"
+            placeholder="React debugging…"
+            maxLength={80}
+            aria-invalid={nameError ? true : undefined}
+            aria-describedby={nameError || nameClash ? `${nameId}-msg` : undefined}
           />
-          {duplicateWarning ? (
-            <p className="dl-sheet-warn">{duplicateWarning}</p>
+          {nameError ? (
+            <p id={`${nameId}-msg`} className="field-error">
+              {nameError}
+            </p>
+          ) : nameClash ? (
+            <p id={`${nameId}-msg`} className="field-warn">
+              You already have a collection called “{nameClash.name}”.
+            </p>
           ) : null}
         </div>
 
-        <div className="dl-sheet-field">
-          <label className="dl-sheet-label" htmlFor="collection-description">
-            Description
+        <div className="field">
+          <label className="label" htmlFor={descriptionId}>
+            Description <span className="label-optional">Optional</span>
           </label>
           <textarea
-            id="collection-description"
+            id={descriptionId}
+            className="textarea"
+            name="description"
+            rows={3}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            rows={3}
-            placeholder="What belongs in this collection and why."
-            className="dl-sheet-textarea"
+            placeholder="What belongs here, and why…"
           />
+          <p className="hint">Shown at the top of the collection, and on its public page if you share it.</p>
         </div>
-      </div>
 
-      {validationMessage ? (
-        <p className="dl-sheet-error">{validationMessage}</p>
-      ) : null}
-      {errorMessage ? (
-        <p className="dl-sheet-error">{errorMessage}</p>
-      ) : null}
-
-      <div className="dl-sheet-actions">
-        <button
-          type="button"
-          onClick={() => void handleSubmit()}
-          disabled={isBusy}
-          className="dl-sheet-btn primary"
-        >
-          {mode === "create"
-            ? isCreating ? "Creating…" : "Create collection"
-            : isUpdating ? "Saving…" : "Save changes"}
-        </button>
-
-        <button
-          type="button"
-          onClick={onClose}
-          disabled={isBusy}
-          className="dl-sheet-btn ghost"
-        >
-          Cancel
-        </button>
-
-        {mode === "edit" ? (
+        <div className="setting-row" style={{ marginTop: 20 }}>
+          <div>
+            <p id={roadmapId} className="setting-title">
+              Roadmap
+            </p>
+            <p className="setting-text">
+              Number the links and set the order readers should follow, like a study plan.
+            </p>
+          </div>
           <button
             type="button"
-            onClick={() => setPendingDelete(true)}
-            disabled={!hasEditableCollection || isBusy}
-            className="dl-sheet-btn danger"
-            style={{ marginLeft: "auto" }}
-          >
-            <Trash2 size={13} />
-            {isDeleting ? "Deleting…" : "Delete"}
-          </button>
-        ) : null}
-      </div>
-
-      {/* Sharing — edit mode only */}
-      {mode === "edit" && activeCollection ? (
-        <div className="dl-sheet-section">
-          <p className="dl-sheet-section-label">Sharing</p>
-
-          {(() => {
-            const isPublic = optimisticPublic ?? activeCollection.isPublic;
-            return (
-              <>
-                <div className="dl-sheet-sharing-row">
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    {isPublic ? (
-                      <Globe size={14} style={{ color: "var(--accent)", flexShrink: 0 }} />
-                    ) : (
-                      <Lock size={14} style={{ color: "var(--fg-3)", flexShrink: 0 }} />
-                    )}
-                    <span style={{ fontSize: 13, color: "var(--fg-1)" }}>
-                      {isPublic
-                        ? "Public — visible to anyone with the link"
-                        : "Private — only you can see this"}
-                    </span>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => void handleTogglePublic()}
-                    disabled={isBusy}
-                    aria-pressed={isPublic}
-                    aria-label={isPublic ? "Make collection private" : "Make collection public"}
-                    className={`dl-toggle${isPublic ? " on" : ""}`}
-                  >
-                    <span className="dl-toggle-knob" />
-                  </button>
-                </div>
-
-                {(isPublic || activeCollection.slug) && previewSlug && publicUrl ? (
-                  <div className="dl-sheet-url-row">
-                    <p className="dl-sheet-url-label">Public link</p>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <code className="dl-sheet-url-code">{publicUrl}</code>
-                      <button
-                        type="button"
-                        onClick={() => void handleCopyUrl()}
-                        aria-label="Copy public URL"
-                        className="dl-sheet-copy-btn"
-                      >
-                        {copied ? <Check size={13} style={{ color: "var(--accent)" }} /> : <Copy size={13} />}
-                      </button>
-                    </div>
-                  </div>
-                ) : !isPublic ? (
-                  <p className="dl-sheet-hint">Toggle public to generate a shareable link.</p>
-                ) : null}
-
-                {isToggling ? (
-                  <p className="dl-sheet-hint">Updating visibility…</p>
-                ) : null}
-              </>
-            );
-          })()}
+            role="switch"
+            className="switch"
+            aria-checked={isRoadmap}
+            aria-labelledby={roadmapId}
+            onClick={() => setIsRoadmap((v) => !v)}
+          />
         </div>
+
+        {shownError ? (
+          <p className="field-error" role="alert" style={{ marginTop: 14 }}>
+            {shownError}
+          </p>
+        ) : null}
+
+        <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
+          <button type="submit" className="btn btn-primary" disabled={isBusy}>
+            {mode === "create"
+              ? isCreating
+                ? "Creating…"
+                : "Create collection"
+              : isUpdating
+                ? "Saving…"
+                : "Save changes"}
+          </button>
+          <button type="button" className="btn btn-ghost" onClick={onClose} disabled={isCreating || isUpdating}>
+            Cancel
+          </button>
+        </div>
+      </form>
+
+      {editing ? (
+        <>
+          <hr className="divider" />
+
+          <section aria-labelledby={sharingId}>
+            <div className="setting-row">
+              <div>
+                <h3 id={sharingId} className="setting-title">
+                  Public page
+                </h3>
+                <p className="setting-text">
+                  {isPublic
+                    ? "Anyone with the link can read this collection. They can’t edit it."
+                    : "Only you can see this collection."}
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                className="switch"
+                aria-checked={isPublic}
+                aria-labelledby={sharingId}
+                onClick={() => void handleTogglePublic()}
+                disabled={isBusy}
+              />
+            </div>
+
+            {isPublic && publicUrl ? (
+              <div className="url-row" style={{ marginTop: 12 }}>
+                <code translate="no" title={publicUrl}>
+                  {publicUrl.replace(/^https?:\/\//, "")}
+                </code>
+                <button
+                  type="button"
+                  className="icon-btn icon-btn-sm"
+                  onClick={() => void handleCopyUrl()}
+                  aria-label={copied ? "Public link copied" : "Copy public link"}
+                >
+                  {copied ? <Check size={14} strokeWidth={2} /> : <Copy size={14} strokeWidth={1.75} />}
+                </button>
+                <a
+                  href={publicUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="icon-btn icon-btn-sm"
+                  aria-label="Open public page in a new tab"
+                >
+                  <ExternalLink size={14} strokeWidth={1.75} />
+                </a>
+              </div>
+            ) : null}
+            <p className="hint" role="status" style={{ marginTop: 8, minHeight: "1.5em" }}>
+              {isToggling ? "Updating visibility…" : copied ? "Link copied to clipboard." : ""}
+            </p>
+          </section>
+
+          <hr className="divider" style={{ marginTop: 10 }} />
+
+          <div className="danger-zone">
+            <div>
+              <p className="setting-title">Delete collection</p>
+              <p className="setting-text">It has to be empty first.</p>
+            </div>
+            <button
+              type="button"
+              className="btn btn-danger-ghost btn-sm"
+              onClick={() => setPendingDelete(true)}
+              disabled={isBusy}
+            >
+              {isDeleting ? "Deleting…" : "Delete…"}
+            </button>
+          </div>
+        </>
       ) : null}
 
-      {pendingDelete && activeCollection ? (
+      {pendingDelete && editing ? (
         <DeleteCollectionDialog
-          collection={activeCollection}
+          collection={editing}
           onCancel={() => setPendingDelete(false)}
-          onConfirm={() => {
+          onConfirm={async () => {
             setPendingDelete(false);
-            void onDelete(activeCollection.id);
-            onClose();
+            setSubmitError(null);
+            try {
+              await onDelete(editing.id);
+              onClose();
+            } catch (error) {
+              // Stay open so the reason (usually "still has bookmarks") is visible.
+              setSubmitError(messageOf(error, "The collection couldn’t be deleted."));
+            }
           }}
         />
       ) : null}
-    </div>
+    </>
   );
 }

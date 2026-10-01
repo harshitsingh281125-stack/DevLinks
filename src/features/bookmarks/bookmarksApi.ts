@@ -1,6 +1,7 @@
 import { baseApi } from "@/api/baseApi";
 import { supabase } from "@/lib/supabase";
 import type { Bookmark, ResourceType, SearchFilters } from "@/lib/types";
+import { canonicalizeUrl } from "./canonicalUrl";
 import { normalizeSearchQuery } from "./searchUtils";
 
 // ─── Row shape returned by Supabase ──────────────────────────────────────────
@@ -18,27 +19,16 @@ type BookmarkRow = {
   image_url: string | null;
   resource_type: string | null;
   tags: string[];
+  position: number;
   search_text: string;
   created_at: string;
   updated_at: string;
 };
 
 const BOOKMARK_SELECT =
-  "id, user_id, collection_id, title, url, normalized_url, description, domain, favicon_url, image_url, resource_type, tags, search_text, created_at, updated_at";
+  "id, user_id, collection_id, title, url, normalized_url, description, domain, favicon_url, image_url, resource_type, tags, position, search_text, created_at, updated_at";
 
-// ─── URL canonicalization ─────────────────────────────────────────────────────
-// Mirrors the Postgres `normalize_bookmark_url` function used by the DB trigger
-// so the client and DB agree on the normalized form for duplicate detection.
-
-export function canonicalizeUrl(url: string): string {
-  return url
-    .toLowerCase()
-    .trim()
-    .replace(/^https?:\/\//, "")
-    .replace(/^www\d*\./, "")
-    .replace(/[#?].*$/, "")
-    .replace(/\/+$/, "");
-}
+export { canonicalizeUrl };
 
 // ─── Row mapper ───────────────────────────────────────────────────────────────
 
@@ -56,6 +46,7 @@ export function mapBookmarkRow(row: BookmarkRow): Bookmark {
     imageUrl: row.image_url,
     resourceType: row.resource_type as ResourceType | null,
     tags: row.tags,
+    position: row.position,
     searchText: row.search_text,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -89,6 +80,15 @@ export type UpdateBookmarkInput = {
   description: string | null;
   resourceType: ResourceType | null;
   tags: string[];
+};
+
+export type ReorderBookmarksInput = {
+  collectionId: string;
+  /** Every bookmark id in the collection, in the new order. */
+  orderedIds: string[];
+  /** The active list query, patched optimistically. */
+  filters: SearchFilters;
+  userId: string;
 };
 
 export type DeleteBookmarkInput = {
@@ -283,6 +283,38 @@ export const bookmarksApi = baseApi.injectEndpoints({
         { type: "Bookmarks" as const, id: "LIST" },
       ],
     }),
+    // Writes the whole order in one call (see reorder_bookmarks in the roadmap
+    // migration), which rejects stale or foreign id lists. Positions are
+    // patched into both caches first so dragging feels instant.
+    reorderBookmarks: builder.mutation<{ collectionId: string }, ReorderBookmarksInput>({
+      queryFn: async ({ collectionId, orderedIds }) => {
+        const { error } = await supabase.rpc("reorder_bookmarks", {
+          p_collection_id: collectionId,
+          p_bookmark_ids: orderedIds,
+        });
+        if (error) return { error: { message: error.message } };
+        return { data: { collectionId } };
+      },
+      onQueryStarted: async ({ filters, orderedIds, userId }, { dispatch, queryFulfilled }) => {
+        const rank = new Map(orderedIds.map((id, i) => [id, i + 1]));
+        const apply = (draft: Bookmark[]) => {
+          draft.forEach((b) => {
+            const next = rank.get(b.id);
+            if (next !== undefined) b.position = next;
+          });
+        };
+        const patches = [
+          dispatch(bookmarksApi.util.updateQueryData("getBookmarks", { filters, userId }, apply)),
+          dispatch(bookmarksApi.util.updateQueryData("getAllBookmarks", userId, apply)),
+        ];
+        try {
+          await queryFulfilled;
+        } catch {
+          patches.forEach((patch) => patch.undo());
+        }
+      },
+      invalidatesTags: [{ type: "Bookmarks" as const, id: "LIST" }],
+    }),
   }),
 });
 
@@ -291,5 +323,6 @@ export const {
   useDeleteBookmarkMutation,
   useGetBookmarksQuery,
   useGetAllBookmarksQuery,
+  useReorderBookmarksMutation,
   useUpdateBookmarkMutation,
 } = bookmarksApi;

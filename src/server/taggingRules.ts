@@ -294,6 +294,62 @@ const TAG_RULES: ReadonlyArray<TagRule> = [
   { pattern: /\bdesign\s+patterns?\b/i, tag: "design-patterns" },
   { pattern: /\btype[\s-]?safe(?:ty)?\b/i, tag: "type-safety" },
   { pattern: /\bopen[\s-]?source\b/i, tag: "open-source" },
+  { pattern: /\bdebug(?:ging|ger)?\b/i, tag: "debugging" },
+  { pattern: /\bdev\s?tools\b/i, tag: "devtools" },
+  // "the Flexbox algorithm", "layout algorithm", "diffing algorithm" describe
+  // engines (CSS, browsers, React), not the algorithms-and-data-structures topic.
+  {
+    pattern: /(?<!(?:flexbox|grid|layout|rendering|reconciliation|diffing)\s)\balgorithms?\b/i,
+    tag: "algorithms",
+  },
+  { pattern: /\bdata\s+structures?\b/i, tag: "data-structures" },
+  { pattern: /\bsystem\s+design\b/i, tag: "system-design" },
+  { pattern: /\bmicro-?services?\b/i, tag: "microservices" },
+  { pattern: /\bdistributed\s+systems?\b/i, tag: "distributed-systems" },
+  { pattern: /\bdatabases?\b/i, tag: "databases" },
+  { pattern: /\bconcurren(?:cy|t)\b|\bmulti-?thread/i, tag: "concurrency" },
+  { pattern: /\basync(?:hronous)?\b|\bpromises?\b|\bevent\s+loop\b/i, tag: "async" },
+  { pattern: /\bfunctional\s+programming\b/i, tag: "functional-programming" },
+  { pattern: /\bobject[\s-]oriented\b|\boop\b/i, tag: "oop" },
+
+  // Web platform
+  { pattern: /\bhttps?\b(?!:\/\/)|\bhttp\/[123]\b/i, tag: "http" },
+  { pattern: /\bcookies?\b/i, tag: "cookies" },
+  { pattern: /\bcors\b|\bcross[\s-]origin\b/i, tag: "cors" },
+  { pattern: /\bcsrf\b|\bcross[\s-]site\s+request\b/i, tag: "csrf" },
+  { pattern: /\bxss\b|\bcross[\s-]site\s+scripting\b/i, tag: "xss" },
+  { pattern: /\bhtml\b/i, tag: "html" },
+  { pattern: /\bthe\s+dom\b|\bdom\s+(?:api|manipulation|events?|nodes?)\b/i, tag: "dom" },
+  { pattern: /\bweb\s+components?\b|\bcustom\s+elements?\b/i, tag: "web-components" },
+  { pattern: /\bservice\s+workers?\b|\bpwa\b|\bprogressive\s+web\s+apps?\b/i, tag: "pwa" },
+  { pattern: /\bweb\s?assembly\b|\bwasm\b/i, tag: "webassembly" },
+  { pattern: /\bsvg\b/i, tag: "svg" },
+  { pattern: /\bflexbox\b/i, tag: "flexbox" },
+  { pattern: /\bcss\s+grid\b|\bgrid\s+layout\b/i, tag: "css-grid" },
+  { pattern: /\breact\s+hooks?\b|\buse(?:State|Effect|Memo|Callback|Ref|Reducer|Context)\b/, tag: "hooks" },
+  { pattern: /\bserver\s+components?\b|\brsc\b/i, tag: "server-components" },
+
+  // Systems & ops
+  { pattern: /\blinux\b/i, tag: "linux" },
+  { pattern: /\bbash\b|\bshell\s+script/i, tag: "bash" },
+  { pattern: /\bcli\b|\bcommand[\s-]line\b/i, tag: "cli" },
+  { pattern: /\bregex(?:es|p)?\b|\bregular\s+expressions?\b/i, tag: "regex" },
+  { pattern: /\bnetworking\b|\btcp\b|\budp\b|\bdns\b/i, tag: "networking" },
+  { pattern: /\bencrypt(?:ion|ed)?\b|\bcryptograph|\bhashing\b/i, tag: "cryptography" },
+  { pattern: /\bgithub\s+actions?\b/i, tag: "github-actions" },
+  { pattern: /\bterraform\b/i, tag: "terraform" },
+  { pattern: /\bnginx\b/i, tag: "nginx" },
+  { pattern: /\bserverless\b|\blambda\s+functions?\b/i, tag: "serverless" },
+  { pattern: /\bobservability\b|\bopentelemetry\b|\bmonitoring\b/i, tag: "observability" },
+
+  // AI
+  { pattern: /\bmachine\s+learning\b|\bdeep\s+learning\b|\bneural\s+networks?\b/i, tag: "machine-learning" },
+  { pattern: /\bllms?\b|\blarge\s+language\s+models?\b|\bprompt\s+engineering\b/i, tag: "llm" },
+  { pattern: /\bai\b|\bartificial\s+intelligence\b/i, tag: "ai" },
+
+  // Career
+  { pattern: /\binterviews?\b/i, tag: "interviews" },
+  { pattern: /\bcareers?\b/i, tag: "career" },
 ];
 
 export function inferSuggestedTags(

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mapCollectionRow } from "./publicApi";
+import { mapCollectionRow, mapFeedRow } from "./publicApi";
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -134,5 +134,52 @@ describe("publicApi author mapping", () => {
     expect(author.githubUsername).toBe("partial-user");
     expect(author.displayName).toBeNull();
     expect(author.bio).toBeNull();
+  });
+});
+
+// ─── mapFeedRow ───────────────────────────────────────────────────────────────
+
+describe("publicApi mapFeedRow", () => {
+  const link = (domain: string | null, created_at: string) => ({ domain, favicon_url: null, created_at });
+
+  it("counts links and keeps the curator's display fields", () => {
+    const item = mapFeedRow({
+      ...BASE_COLLECTION_ROW,
+      profiles: { display_name: "Ada", github_username: "ada", avatar_url: null },
+      bookmarks: [link("react.dev", "2026-04-02T00:00:00Z"), link("mdn.dev", "2026-04-03T00:00:00Z")],
+    });
+    expect(item.linkCount).toBe(2);
+    expect(item.author).toEqual({ displayName: "Ada", githubUsername: "ada", avatarUrl: null });
+    expect(item.collection.slug).toBe("react-debugging");
+  });
+
+  it("lists up to three distinct domains, newest first", () => {
+    const item = mapFeedRow({
+      ...BASE_COLLECTION_ROW,
+      profiles: null,
+      bookmarks: [
+        link("a.dev", "2026-04-01T00:00:00Z"),
+        link("b.dev", "2026-04-05T00:00:00Z"),
+        link("b.dev", "2026-04-04T00:00:00Z"),
+        link(null, "2026-04-06T00:00:00Z"),
+        link("c.dev", "2026-04-03T00:00:00Z"),
+        link("d.dev", "2026-04-02T00:00:00Z"),
+      ],
+    });
+    expect(item.sites.map((s) => s.domain)).toEqual(["b.dev", "c.dev", "d.dev"]);
+  });
+
+  it("uses the newest link as last activity, else the collection's updated_at", () => {
+    const withNewerLink = mapFeedRow({
+      ...BASE_COLLECTION_ROW,
+      profiles: null,
+      bookmarks: [link("a.dev", "2026-05-01T00:00:00Z")],
+    });
+    expect(withNewerLink.lastActivityAt).toBe("2026-05-01T00:00:00Z");
+
+    const empty = mapFeedRow({ ...BASE_COLLECTION_ROW, profiles: null, bookmarks: null });
+    expect(empty.linkCount).toBe(0);
+    expect(empty.sites).toEqual([]);
+    expect(empty.lastActivityAt).toBe(BASE_COLLECTION_ROW.updated_at);
   });
 });
